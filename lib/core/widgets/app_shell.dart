@@ -134,9 +134,13 @@ class _SideNavRailState extends State<_SideNavRail> {
                   height: 40,
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: LinearGradient(colors: [AppColors.primary, AppColors.primaryDark]),
                   ),
-                  child: const Icon(Icons.restaurant_rounded, size: 22, color: AppColors.onPrimary),
+                  child: ClipOval(
+                    child: Image.asset(
+                      'assets/images/katiyastationlogo.jpeg',
+                      fit: BoxFit.cover,
+                    ),
+                  ),
                 ),
                 if (!_collapsed) ...[
                   const SizedBox(width: 10),

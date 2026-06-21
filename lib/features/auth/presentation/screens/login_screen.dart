@@ -115,7 +115,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               ),
                             ],
                           ),
-                          child: const Icon(Icons.restaurant_rounded, size: 56, color: AppColors.onPrimary),
+                          child: ClipOval(
+                            child: Image.asset(
+                              'assets/images/katiyastationlogo.jpeg',
+                              fit: BoxFit.cover,
+                            ),
+                          ),
                         ).animate().scale(delay: 200.ms, duration: 600.ms, curve: Curves.elasticOut),
                         const SizedBox(height: 32),
                         Text(

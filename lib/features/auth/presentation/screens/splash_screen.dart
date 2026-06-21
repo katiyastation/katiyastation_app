@@ -108,7 +108,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.restaurant_rounded, size: 64, color: AppColors.onPrimary),
+                  child: ClipOval(
+                    child: Image.asset(
+                      'assets/images/katiyastationlogo.jpeg',
+                      fit: BoxFit.cover,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 32),
                 Text(
