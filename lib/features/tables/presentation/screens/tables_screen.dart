@@ -259,10 +259,25 @@ class _TablesScreenState extends ConsumerState<TablesScreen> {
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () async {
-              if (numCtrl.text.isEmpty) return;
-              await ref.read(tableNotifierProvider.notifier)
+              if (numCtrl.text.trim().isEmpty) return;
+              final scaffoldMessenger = ScaffoldMessenger.of(context);
+              final success = await ref.read(tableNotifierProvider.notifier)
                   .addTable(numCtrl.text.trim(), sectionCtrl.text.trim(), capacity);
-              if (ctx.mounted) Navigator.pop(ctx);
+              if (ctx.mounted) {
+                if (success) {
+                  Navigator.pop(ctx);
+                } else {
+                  final state = ref.read(tableNotifierProvider);
+                  state.whenOrNull(
+                    error: (err, _) => scaffoldMessenger.showSnackBar(
+                      SnackBar(
+                        content: Text('Error: $err'),
+                        backgroundColor: AppColors.error,
+                      ),
+                    ),
+                  );
+                }
+              }
             },
             child: const Text('Add'),
           ),

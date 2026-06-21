@@ -182,16 +182,29 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () async {
-              final profile = ref.read(authNotifierProvider).value;
-              final supabase = ref.read(supabaseProvider);
-              await supabase.from(SupabaseConstants.menuCategories).insert({
-                'id': const Uuid().v4(),
-                'branch_id': profile?.branchId,
-                'name': nameCtrl.text.trim(),
-                'type': type,
-                'is_active': true,
-              });
-              if (context.mounted) Navigator.pop(ctx);
+              final scaffoldMessenger = ScaffoldMessenger.of(context);
+              try {
+                final profile = ref.read(authNotifierProvider).value;
+                final supabase = ref.read(supabaseProvider);
+                if (profile?.branchId == null) {
+                  throw Exception('Branch ID not found in user profile. Cannot add category.');
+                }
+                await supabase.from(SupabaseConstants.menuCategories).insert({
+                  'id': const Uuid().v4(),
+                  'branch_id': profile!.branchId,
+                  'name': nameCtrl.text.trim(),
+                  'type': type,
+                  'is_active': true,
+                });
+                if (context.mounted) Navigator.pop(ctx);
+              } catch (e) {
+                scaffoldMessenger.showSnackBar(
+                  SnackBar(
+                    content: Text('Error: $e'),
+                    backgroundColor: AppColors.error,
+                  ),
+                );
+              }
             },
             child: const Text('Add'),
           ),
@@ -225,23 +238,36 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () async {
-              final profile = ref.read(authNotifierProvider).value;
-              final supabase = ref.read(supabaseProvider);
-              final data = {
-                'branch_id': profile?.branchId,
-                'category_id': _selectedCatId,
-                'name': nameCtrl.text.trim(),
-                'price': double.tryParse(priceCtrl.text) ?? 0,
-                'cost_price': double.tryParse(costCtrl.text),
-                'description': descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
-                'is_available': true,
-              };
-              if (existing == null) {
-                await supabase.from(SupabaseConstants.menuItems).insert({'id': const Uuid().v4(), ...data});
-              } else {
-                await supabase.from(SupabaseConstants.menuItems).update(data).eq('id', existing.id);
+              final scaffoldMessenger = ScaffoldMessenger.of(context);
+              try {
+                final profile = ref.read(authNotifierProvider).value;
+                final supabase = ref.read(supabaseProvider);
+                if (profile?.branchId == null) {
+                  throw Exception('Branch ID not found in user profile. Cannot save item.');
+                }
+                final data = {
+                  'branch_id': profile!.branchId,
+                  'category_id': _selectedCatId,
+                  'name': nameCtrl.text.trim(),
+                  'price': double.tryParse(priceCtrl.text) ?? 0,
+                  'cost_price': double.tryParse(costCtrl.text),
+                  'description': descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+                  'is_available': true,
+                };
+                if (existing == null) {
+                  await supabase.from(SupabaseConstants.menuItems).insert({'id': const Uuid().v4(), ...data});
+                } else {
+                  await supabase.from(SupabaseConstants.menuItems).update(data).eq('id', existing.id);
+                }
+                if (context.mounted) Navigator.pop(ctx);
+              } catch (e) {
+                scaffoldMessenger.showSnackBar(
+                  SnackBar(
+                    content: Text('Error: $e'),
+                    backgroundColor: AppColors.error,
+                  ),
+                );
               }
-              if (context.mounted) Navigator.pop(ctx);
             },
             child: const Text('Save'),
           ),

@@ -81,9 +81,9 @@ class KotItem extends Equatable {
       id: json['id'] as String,
       kotId: json['kot_id'] as String,
       menuItemId: json['menu_item_id'] as String,
-      menuItemName: json['menu_item_name'] as String? ?? json['menu_item']?['name'] ?? '',
+      menuItemName: json['name'] as String? ?? json['menu_item_name'] as String? ?? json['menu_item']?['name'] ?? '',
       quantity: json['quantity'] as int,
-      notes: json['notes'] as String?,
+      notes: json['note'] as String? ?? json['notes'] as String?,
     );
   }
 

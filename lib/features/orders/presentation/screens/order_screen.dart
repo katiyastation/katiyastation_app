@@ -219,22 +219,32 @@ class _OrderScreenState extends ConsumerState<OrderScreen> {
 
   Future<void> _sendKot(dynamic profile) async {
     if (profile == null) return;
-    final kot = await ref.read(orderNotifierProvider.notifier).sendKot(
-          sessionId: widget.sessionId,
-          tableId: widget.tableId,
-          branchId: profile.branchId ?? '',
-        );
-    if (kot != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle, color: AppColors.success),
-              const SizedBox(width: 10),
-              Text('${kot.kotNumber} sent to kitchen!'),
-            ],
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final kot = await ref.read(orderNotifierProvider.notifier).sendKot(
+            sessionId: widget.sessionId,
+            tableId: widget.tableId,
+            branchId: profile.branchId ?? '',
+          );
+      if (kot != null && mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: AppColors.success),
+                const SizedBox(width: 10),
+                Text('${kot.kotNumber} sent to kitchen!'),
+              ],
+            ),
+            backgroundColor: AppColors.surfaceVariant,
           ),
-          backgroundColor: AppColors.surfaceVariant,
+        );
+      }
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Error sending KOT: $e'),
+          backgroundColor: AppColors.error,
         ),
       );
     }

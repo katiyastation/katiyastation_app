@@ -80,16 +80,27 @@ class TableNotifier extends StateNotifier<AsyncValue<void>> {
     }
   }
 
-  Future<void> addTable(String tableNumber, String section, int capacity) async {
-    final id = const Uuid().v4();
-    await _supabase.from(SupabaseConstants.restaurantTables).insert({
-      'id': id,
-      'branch_id': _branchId,
-      'table_number': tableNumber,
-      'section': section,
-      'capacity': capacity,
-      'status': 'available',
-    });
+  Future<bool> addTable(String tableNumber, String section, int capacity) async {
+    state = const AsyncValue.loading();
+    try {
+      if (_branchId == null) {
+        throw Exception('Branch ID not found in user profile. Cannot add table.');
+      }
+      final id = const Uuid().v4();
+      await _supabase.from(SupabaseConstants.restaurantTables).insert({
+        'id': id,
+        'branch_id': _branchId,
+        'table_number': tableNumber,
+        'section': section,
+        'capacity': capacity,
+        'status': 'available',
+      });
+      state = const AsyncValue.data(null);
+      return true;
+    } catch (e) {
+      state = AsyncValue.error(e.toString(), StackTrace.current);
+      return false;
+    }
   }
 
   Future<void> updateTableStatus(String tableId, String status) async {

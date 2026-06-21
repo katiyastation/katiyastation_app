@@ -149,10 +149,9 @@ class OrderNotifier extends StateNotifier<List<CartItem>> {
         'id': const Uuid().v4(),
         'kot_id': kotId,
         'menu_item_id': cartItem.item.id,
-        'menu_item_name': cartItem.item.name,
+        'name': cartItem.item.name,
         'quantity': cartItem.quantity,
-        'unit_price': cartItem.item.price,
-        'notes': cartItem.notes,
+        'note': cartItem.notes,
       });
     }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
@@ -320,11 +321,47 @@ class _SuperAdminPortalState extends ConsumerState<SuperAdminPortal>
     final messenger = ScaffoldMessenger.of(context);
     try {
       final adminClient = ref.read(supabaseProvider);
-      
-      // Call secure SQL RPC to provision the user in auth.users and user_profiles
-      await adminClient.rpc('admin_create_auth_user', params: {
-        'p_email': email,
-        'p_password': password,
+
+      // ── CRITICAL for Web ──────────────────────────────────────────────────
+      // On Chrome, both SupabaseClient instances share localStorage.
+      // signUp() on the temp client overwrites the admin's session token.
+      // Save the admin refresh token FIRST so we can restore it after.
+      final adminRefreshToken =
+          adminClient.auth.currentSession?.refreshToken;
+      // ─────────────────────────────────────────────────────────────────────
+
+      // 1. Temp client with implicit flow (no asyncStorage/PKCE needed on web)
+      final tempClient = SupabaseClient(
+        SupabaseConstants.supabaseUrl,
+        SupabaseConstants.supabaseAnonKey,
+        authOptions: const AuthClientOptions(
+          authFlowType: AuthFlowType.implicit,
+        ),
+      );
+
+      // 2. Sign up via GoTrue — writes auth.users + auth.identities correctly
+      final authResponse = await tempClient.auth.signUp(
+        email: email.trim().toLowerCase(),
+        password: password,
+      );
+
+      final newUserId = authResponse.user?.id;
+      if (newUserId == null) {
+        throw Exception('Sign up failed: User ID is null. Email may already be registered.');
+      }
+
+      // 3. Sign out the temp client immediately — clears the new user's session
+      //    from localStorage so the admin is not displaced!
+      await tempClient.auth.signOut();
+
+      // 4. Restore the admin's session in localStorage
+      if (adminRefreshToken != null) {
+        await adminClient.auth.setSession(adminRefreshToken);
+      }
+
+      // 5. Set up the user's role, branch and profile via admin RPC
+      await adminClient.rpc('admin_setup_user_profile', params: {
+        'p_user_id': newUserId,
         'p_full_name': name,
         'p_role': role,
         'p_branch_id': branchId,
