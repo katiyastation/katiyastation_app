@@ -1,0 +1,92 @@
+import 'package:equatable/equatable.dart';
+
+class Kot extends Equatable {
+  final String id;
+  final String branchId;
+  final String sessionId;
+  final String tableId;
+  final String kotNumber;
+  final String status; // pending | preparing | ready | served | cancelled
+  final String? waiterId;
+  final String? waiterName;
+  final List<KotItem> items;
+  final DateTime createdAt;
+  final DateTime? servedAt;
+  final String? notes;
+
+  const Kot({
+    required this.id,
+    required this.branchId,
+    required this.sessionId,
+    required this.tableId,
+    required this.kotNumber,
+    required this.status,
+    this.waiterId,
+    this.waiterName,
+    required this.items,
+    required this.createdAt,
+    this.servedAt,
+    this.notes,
+  });
+
+  factory Kot.fromJson(Map<String, dynamic> json) {
+    final rawItems = json['kot_items'] ?? json['items'] ?? [];
+    return Kot(
+      id: json['id'] as String,
+      branchId: json['branch_id'] as String,
+      sessionId: json['session_id'] as String,
+      tableId: json['table_id'] as String,
+      kotNumber: json['kot_number'] as String,
+      status: json['status'] as String? ?? 'pending',
+      waiterId: json['waiter_id'] as String?,
+      waiterName: json['waiter_name'] as String?,
+      items: (rawItems as List).map((i) => KotItem.fromJson(i as Map<String, dynamic>)).toList(),
+      createdAt: DateTime.parse(json['created_at'] as String),
+      servedAt: json['served_at'] != null ? DateTime.parse(json['served_at'] as String) : null,
+      notes: json['notes'] as String?,
+    );
+  }
+
+  bool get isPending => status == 'pending';
+  bool get isPreparing => status == 'preparing';
+  bool get isReady => status == 'ready';
+  bool get isServed => status == 'served';
+  bool get isCancelled => status == 'cancelled';
+
+  Duration get elapsed => DateTime.now().difference(createdAt);
+
+  @override
+  List<Object?> get props => [id, kotNumber, status, sessionId];
+}
+
+class KotItem extends Equatable {
+  final String id;
+  final String kotId;
+  final String menuItemId;
+  final String menuItemName;
+  final int quantity;
+  final String? notes;
+
+  const KotItem({
+    required this.id,
+    required this.kotId,
+    required this.menuItemId,
+    required this.menuItemName,
+    required this.quantity,
+    this.notes,
+  });
+
+  factory KotItem.fromJson(Map<String, dynamic> json) {
+    return KotItem(
+      id: json['id'] as String,
+      kotId: json['kot_id'] as String,
+      menuItemId: json['menu_item_id'] as String,
+      menuItemName: json['menu_item_name'] as String? ?? json['menu_item']?['name'] ?? '',
+      quantity: json['quantity'] as int,
+      notes: json['notes'] as String?,
+    );
+  }
+
+  @override
+  List<Object?> get props => [id, kotId, menuItemId, quantity];
+}

@@ -1,0 +1,155 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/constants/app_colors.dart';
+import '../../../../core/constants/supabase_constants.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
+
+const _categories = ['Rent', 'Electricity', 'Internet', 'Gas', 'Salaries', 'Maintenance', 'Miscellaneous'];
+
+class ExpenseScreen extends ConsumerStatefulWidget {
+  const ExpenseScreen({super.key});
+  @override
+  ConsumerState<ExpenseScreen> createState() => _ExpenseScreenState();
+}
+
+class _ExpenseScreenState extends ConsumerState<ExpenseScreen> {
+  final fmt = NumberFormat('#,##0.00');
+  List<Map<String, dynamic>> _expenses = [];
+  bool _loading = true;
+  String _catFilter = 'All';
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    final profile = ref.read(authNotifierProvider).value;
+    if (profile == null) return;
+    final data = await ref.read(supabaseProvider).from(SupabaseConstants.expenses)
+        .select().eq('branch_id', profile.branchId ?? '').order('created_at', ascending: false);
+    if (mounted) setState(() { _expenses = List<Map<String, dynamic>>.from(data); _loading = false; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _catFilter == 'All' ? _expenses : _expenses.where((e) => e['category'] == _catFilter).toList();
+    final total = filtered.fold<double>(0, (s, e) => s + ((e['amount'] as num?)?.toDouble() ?? 0));
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        title: const Text('Expense Management'),
+        actions: [
+          TextButton.icon(icon: const Icon(Icons.add_rounded, size: 18), label: const Text('Add Expense'), onPressed: () => _showAddDialog(context)),
+        ],
+      ),
+      body: Column(
+        children: [
+          Container(
+            color: AppColors.surface, padding: const EdgeInsets.all(12),
+            child: Row(children: [
+              Container(
+                padding: const EdgeInsets.all(10), margin: const EdgeInsets.only(right: 12),
+                decoration: BoxDecoration(color: AppColors.error.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.error.withValues(alpha: 0.2))),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Total', style: GoogleFonts.outfit(fontSize: 11, color: AppColors.error)),
+                  Text('NPR ${fmt.format(total)}', style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                ]),
+              ),
+              Expanded(child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(children: ['All', ..._categories].map((cat) => GestureDetector(
+                  onTap: () => setState(() => _catFilter = cat),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    margin: const EdgeInsets.only(right: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: _catFilter == cat ? AppColors.primary.withValues(alpha: 0.15) : AppColors.surfaceVariant,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _catFilter == cat ? AppColors.primary : AppColors.border),
+                    ),
+                    child: Text(cat, style: GoogleFonts.outfit(fontSize: 12, color: _catFilter == cat ? AppColors.primary : AppColors.textSecondary)),
+                  ),
+                )).toList()),
+              )),
+            ]),
+          ),
+          const Divider(height: 1),
+          Expanded(child: _loading
+            ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+            : filtered.isEmpty
+              ? Center(child: Text('No expenses found', style: GoogleFonts.outfit(color: AppColors.textSecondary)))
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: filtered.length,
+                  itemBuilder: (ctx, i) {
+                    final e = filtered[i];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+                      child: Row(children: [
+                        Container(
+                          width: 44, height: 44,
+                          decoration: BoxDecoration(color: AppColors.error.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+                          child: const Icon(Icons.money_off_rounded, color: AppColors.error, size: 22),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(e['title'] ?? 'Expense', style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                          Text(e['category'] ?? '', style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textSecondary)),
+                        ])),
+                        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                          Text('NPR ${fmt.format((e['amount'] as num?)?.toDouble() ?? 0)}', style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.error)),
+                          Text(DateFormat('dd MMM').format(DateTime.parse(e['created_at'] as String)), style: GoogleFonts.outfit(fontSize: 11, color: AppColors.textSecondary)),
+                        ]),
+                      ]),
+                    ).animate().fadeIn(delay: Duration(milliseconds: i * 25));
+                  },
+                )),
+        ],
+      ),
+    );
+  }
+
+  void _showAddDialog(BuildContext context) {
+    final titleCtrl = TextEditingController();
+    final amountCtrl = TextEditingController();
+    String category = _categories.first;
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Add Expense'),
+      content: StatefulBuilder(builder: (ctx, set) => Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: 'Title *')),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          value: category,
+          decoration: const InputDecoration(labelText: 'Category'),
+          onChanged: (v) => set(() => category = v!),
+          items: _categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+        ),
+        const SizedBox(height: 12),
+        TextField(controller: amountCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Amount (NPR) *')),
+      ])),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        ElevatedButton(onPressed: () async {
+          final profile = ref.read(authNotifierProvider).value;
+          await ref.read(supabaseProvider).from(SupabaseConstants.expenses).insert({
+            'id': const Uuid().v4(),
+            'branch_id': profile?.branchId,
+            'title': titleCtrl.text.trim(),
+            'category': category,
+            'amount': double.tryParse(amountCtrl.text) ?? 0,
+            'created_at': DateTime.now().toIso8601String(),
+          });
+          if (context.mounted) { Navigator.pop(ctx); _load(); }
+        }, child: const Text('Save')),
+      ],
+    ));
+  }
+}
