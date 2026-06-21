@@ -31,22 +31,44 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() { _loading = true; _error = null; });
+
     await ref.read(authNotifierProvider.notifier).signIn(
           email: _emailCtrl.text.trim(),
           password: _passwordCtrl.text.trim(),
         );
-    final state = ref.read(authNotifierProvider);
+
     if (!mounted) return;
-    state.when(
+
+    final authState = ref.read(authNotifierProvider);
+    authState.when(
       data: (profile) {
         if (profile != null) {
-          context.go('/dashboard');
+          // Navigate based on role
+          switch (profile.role) {
+            case 'super_admin':
+              context.go('/super-admin');
+              break;
+            case 'branch_manager':
+            case 'cashier':
+            case 'waiter':
+            case 'kitchen':
+            case 'inventory':
+            case 'accountant':
+              context.go('/dashboard');
+              break;
+            default:
+              context.go('/dashboard');
+          }
+          // Don't reset _loading here — navigation is happening
         } else {
-          setState(() { _error = 'Login failed. Try again.'; _loading = false; });
+          setState(() { _error = 'Login failed. Please try again.'; _loading = false; });
         }
       },
       error: (e, _) => setState(() { _error = e.toString(); _loading = false; }),
-      loading: () {},
+      loading: () {
+        // Should not happen after await, but handle gracefully
+        setState(() { _error = 'Login timed out. Please try again.'; _loading = false; });
+      },
     );
   }
 

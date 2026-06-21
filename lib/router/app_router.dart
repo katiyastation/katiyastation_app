@@ -32,6 +32,7 @@ import '../features/suppliers/presentation/screens/supplier_screen.dart';
 import '../features/branches/presentation/screens/branch_management_screen.dart';
 import '../features/shift_closing/presentation/screens/shift_closing_screen.dart';
 import '../features/audit_logs/presentation/screens/audit_log_screen.dart';
+import '../features/super_admin/presentation/screens/super_admin_portal.dart';
 
 // Nav items model
 class NavItem {
@@ -51,8 +52,10 @@ class NavItem {
 }
 
 const List<NavItem> allNavItems = [
+  NavItem(label: 'Super Admin', icon: Icons.admin_panel_settings_outlined, activeIcon: Icons.admin_panel_settings_rounded, path: '/super-admin',
+      allowedRoles: ['super_admin']),
   NavItem(label: 'Dashboard', icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard_rounded, path: '/dashboard',
-      allowedRoles: ['super_admin', 'branch_manager', 'cashier', 'waiter', 'kitchen', 'inventory', 'accountant']),
+      allowedRoles: ['branch_manager', 'cashier', 'waiter', 'kitchen', 'inventory', 'accountant']),
   NavItem(label: 'Tables', icon: Icons.table_restaurant_outlined, activeIcon: Icons.table_restaurant_rounded, path: '/tables',
       allowedRoles: ['branch_manager', 'cashier', 'waiter']),
   NavItem(label: 'Kitchen', icon: Icons.kitchen_outlined, activeIcon: Icons.kitchen_rounded, path: '/kitchen',
@@ -114,7 +117,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       if (isSplash) return null;
       if (!isLoggedIn && !isLoginPage) return '/login';
-      if (isLoggedIn && isLoginPage) return '/dashboard';
+      if (isLoggedIn) {
+        final role = authState.value?.role;
+        if (isLoginPage) {
+          return role == 'super_admin' ? '/super-admin' : '/dashboard';
+        }
+        if (state.matchedLocation == '/dashboard' && role == 'super_admin') {
+          return '/super-admin';
+        }
+      }
       return null;
     },
     routes: [
@@ -123,6 +134,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ShellRoute(
         builder: (ctx, state, child) => AppShell(currentPath: state.matchedLocation, child: child),
         routes: [
+          GoRoute(path: '/super-admin', builder: (ctx, _) => const SuperAdminPortal()),
           GoRoute(path: '/dashboard', builder: (ctx, _) => const DashboardScreen()),
           GoRoute(path: '/tables', builder: (ctx, _) => const TablesScreen()),
           GoRoute(

@@ -158,6 +158,7 @@ class BranchManagementScreen extends ConsumerWidget {
           ElevatedButton(
             onPressed: () async {
               if (nameCtrl.text.trim().isEmpty) return;
+              final messenger = ScaffoldMessenger.of(context);
               final supabase = ref.read(supabaseProvider);
 
               final payload = {
@@ -174,23 +175,38 @@ class BranchManagementScreen extends ConsumerWidget {
                     double.tryParse(serviceChargeCtrl.text) ?? 10.0,
               };
 
-              if (existing != null) {
-                await supabase
-                    .from(SupabaseConstants.branches)
-                    .update({...payload, 'updated_at': DateTime.now().toIso8601String()})
-                    .eq('id', existing['id'] as String);
-              } else {
-                await supabase.from(SupabaseConstants.branches).insert({
-                  'id': const Uuid().v4(),
-                  ...payload,
-                  'is_active': true,
-                  'created_at': DateTime.now().toIso8601String(),
-                });
-              }
+              try {
+                if (existing != null) {
+                  await supabase
+                      .from(SupabaseConstants.branches)
+                      .update({...payload, 'updated_at': DateTime.now().toIso8601String()})
+                      .eq('id', existing['id'] as String);
+                  messenger.showSnackBar(const SnackBar(
+                    content: Text('Branch updated successfully'),
+                    backgroundColor: AppColors.success,
+                  ));
+                } else {
+                  await supabase.from(SupabaseConstants.branches).insert({
+                    'id': const Uuid().v4(),
+                    ...payload,
+                    'is_active': true,
+                    'created_at': DateTime.now().toIso8601String(),
+                  });
+                  messenger.showSnackBar(const SnackBar(
+                    content: Text('Branch added successfully'),
+                    backgroundColor: AppColors.success,
+                  ));
+                }
 
-              if (ctx.mounted) {
-                Navigator.pop(ctx);
+                if (ctx.mounted) {
+                  Navigator.pop(ctx);
+                }
                 ref.invalidate(branchesProvider);
+              } catch (e) {
+                messenger.showSnackBar(SnackBar(
+                  content: Text('Failed to save branch: $e'),
+                  backgroundColor: AppColors.error,
+                ));
               }
             },
             child: Text(isEdit ? 'Update' : 'Add Branch'),
@@ -201,6 +217,9 @@ class BranchManagementScreen extends ConsumerWidget {
   }
 
   Future<void> _deleteBranch(BuildContext context, WidgetRef ref, String id) async {
+    // Capture messenger before async gap
+    final messenger = ScaffoldMessenger.of(context);
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -218,17 +237,33 @@ class BranchManagementScreen extends ConsumerWidget {
       ),
     );
     if (confirmed != true) return;
-    await ref.read(supabaseProvider).from(SupabaseConstants.branches).delete().eq('id', id);
-    ref.invalidate(branchesProvider);
+
+    try {
+      await ref.read(supabaseProvider).from(SupabaseConstants.branches).delete().eq('id', id);
+      ref.invalidate(branchesProvider);
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Branch deleted successfully'),
+        backgroundColor: AppColors.success,
+      ));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+        content: Text('Failed to delete branch: $e'),
+        backgroundColor: AppColors.error,
+      ));
+    }
   }
 
   Future<void> _toggleActive(WidgetRef ref, Map<String, dynamic> branch) async {
     final isActive = branch['is_active'] as bool? ?? true;
-    await ref.read(supabaseProvider).from(SupabaseConstants.branches).update({
-      'is_active': !isActive,
-      'updated_at': DateTime.now().toIso8601String(),
-    }).eq('id', branch['id'] as String);
-    ref.invalidate(branchesProvider);
+    try {
+      await ref.read(supabaseProvider).from(SupabaseConstants.branches).update({
+        'is_active': !isActive,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', branch['id'] as String);
+      ref.invalidate(branchesProvider);
+    } catch (e) {
+      // Quietly log or ignore
+    }
   }
 }
 

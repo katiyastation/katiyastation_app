@@ -39,15 +39,37 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     authState.when(
       data: (profile) {
         if (profile != null && profile.isActive) {
-          context.go('/dashboard');
+          // Route based on role
+          if (profile.role == 'super_admin') {
+            context.go('/super-admin');
+          } else {
+            context.go('/dashboard');
+          }
         } else {
           context.go('/login');
         }
       },
       error: (_, __) => context.go('/login'),
       loading: () async {
-        await Future.delayed(const Duration(milliseconds: 1000));
-        if (mounted) context.go('/login');
+        // Wait a bit more for the auth state to settle
+        await Future.delayed(const Duration(milliseconds: 1500));
+        if (!mounted) return;
+        final retryState = ref.read(authNotifierProvider);
+        retryState.when(
+          data: (profile) {
+            if (profile != null && profile.isActive) {
+              if (profile.role == 'super_admin') {
+                context.go('/super-admin');
+              } else {
+                context.go('/dashboard');
+              }
+            } else {
+              context.go('/login');
+            }
+          },
+          error: (_, __) => context.go('/login'),
+          loading: () => context.go('/login'),
+        );
       },
     );
   }

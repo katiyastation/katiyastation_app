@@ -55,11 +55,11 @@ class AuthNotifier extends StateNotifier<AsyncValue<UserProfile?>> {
     state = const AsyncValue.loading();
     try {
       final response = await _supabase.auth.signInWithPassword(
-        email: email,
+        email: email.trim().toLowerCase(),
         password: password,
       );
       if (response.user == null) {
-        state = AsyncValue.error('Login failed', StackTrace.current);
+        state = AsyncValue.error('Login failed. Please check your credentials.', StackTrace.current);
         return;
       }
       final profileData = await _supabase
@@ -69,21 +69,37 @@ class AuthNotifier extends StateNotifier<AsyncValue<UserProfile?>> {
           .maybeSingle();
 
       if (profileData == null) {
-        state = AsyncValue.error('User profile not found. Contact administrator.', StackTrace.current);
+        state = AsyncValue.error('User profile not found. Contact your administrator.', StackTrace.current);
         await _supabase.auth.signOut();
         return;
       }
       final profile = UserProfile.fromJson(profileData);
       if (!profile.isActive) {
-        state = AsyncValue.error('Your account has been deactivated.', StackTrace.current);
+        state = AsyncValue.error('Your account has been deactivated. Contact your administrator.', StackTrace.current);
         await _supabase.auth.signOut();
         return;
       }
       state = AsyncValue.data(profile);
     } on AuthException catch (e) {
-      state = AsyncValue.error(e.message, StackTrace.current);
+      // Map Supabase error codes to friendly messages
+      String message;
+      switch (e.message.toLowerCase()) {
+        case 'invalid login credentials':
+        case 'invalid_credentials':
+          message = 'Invalid email or password. Please try again.';
+          break;
+        case 'email not confirmed':
+          message = 'Email not confirmed. Contact your administrator.';
+          break;
+        case 'too many requests':
+          message = 'Too many login attempts. Please wait and try again.';
+          break;
+        default:
+          message = e.message;
+      }
+      state = AsyncValue.error(message, StackTrace.current);
     } catch (e) {
-      state = AsyncValue.error(e.toString(), StackTrace.current);
+      state = AsyncValue.error('An unexpected error occurred: ${e.toString()}', StackTrace.current);
     }
   }
 
