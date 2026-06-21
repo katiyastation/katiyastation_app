@@ -3,12 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:uuid/uuid.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
+import 'package:katiya_station_rms/features/cashier/domain/entities/bill_entities.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
-import '../../domain/entities/bill_entities.dart';
 
 final creditProvider = StreamProvider<List<CreditRecord>>((ref) {
   final supabase = ref.watch(supabaseProvider);

@@ -8,7 +8,6 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/order_provider.dart';
 import '../../../menu/domain/entities/menu_entities.dart';
-import '../../domain/entities/order_entities.dart';
 
 class OrderScreen extends ConsumerStatefulWidget {
   final String tableId;

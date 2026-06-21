@@ -27,6 +27,11 @@ import '../features/attendance/presentation/screens/attendance_screen.dart';
 import '../features/reports/presentation/screens/reports_screen.dart';
 import '../features/settings/presentation/screens/settings_screen.dart';
 import '../features/notifications/presentation/screens/notifications_screen.dart';
+import '../features/loyalty/presentation/screens/loyalty_screen.dart';
+import '../features/suppliers/presentation/screens/supplier_screen.dart';
+import '../features/branches/presentation/screens/branch_management_screen.dart';
+import '../features/shift_closing/presentation/screens/shift_closing_screen.dart';
+import '../features/audit_logs/presentation/screens/audit_log_screen.dart';
 
 // Nav items model
 class NavItem {
@@ -80,6 +85,16 @@ const List<NavItem> allNavItems = [
       allowedRoles: ['branch_manager', 'accountant']),
   NavItem(label: 'Settings', icon: Icons.settings_outlined, activeIcon: Icons.settings_rounded, path: '/settings',
       allowedRoles: ['super_admin', 'branch_manager']),
+  NavItem(label: 'Loyalty', icon: Icons.stars_outlined, activeIcon: Icons.stars_rounded, path: '/loyalty',
+      allowedRoles: ['branch_manager', 'cashier']),
+  NavItem(label: 'Suppliers', icon: Icons.local_shipping_outlined, activeIcon: Icons.local_shipping_rounded, path: '/suppliers',
+      allowedRoles: ['branch_manager', 'inventory']),
+  NavItem(label: 'Branches', icon: Icons.store_outlined, activeIcon: Icons.store_rounded, path: '/branches',
+      allowedRoles: ['super_admin', 'branch_manager']),
+  NavItem(label: 'Shift Close', icon: Icons.lock_clock_outlined, activeIcon: Icons.lock_clock_rounded, path: '/shift-closing',
+      allowedRoles: ['branch_manager', 'cashier']),
+  NavItem(label: 'Audit Logs', icon: Icons.history_rounded, activeIcon: Icons.manage_history_rounded, path: '/audit-logs',
+      allowedRoles: ['super_admin', 'branch_manager']),
 ];
 
 List<NavItem> getNavItemsForRole(String? role) {
@@ -106,7 +121,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/', builder: (ctx, _) => const SplashScreen()),
       GoRoute(path: '/login', builder: (ctx, _) => const LoginScreen()),
       ShellRoute(
-        builder: (ctx, state, child) => AppShell(child: child, currentPath: state.matchedLocation),
+        builder: (ctx, state, child) => AppShell(currentPath: state.matchedLocation, child: child),
         routes: [
           GoRoute(path: '/dashboard', builder: (ctx, _) => const DashboardScreen()),
           GoRoute(path: '/tables', builder: (ctx, _) => const TablesScreen()),
@@ -139,6 +154,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/reports', builder: (ctx, _) => const ReportsScreen()),
           GoRoute(path: '/settings', builder: (ctx, _) => const SettingsScreen()),
           GoRoute(path: '/notifications', builder: (ctx, _) => const NotificationsScreen()),
+          GoRoute(path: '/loyalty', builder: (ctx, _) => const LoyaltyScreen()),
+          GoRoute(path: '/suppliers', builder: (ctx, _) => const SupplierScreen()),
+          GoRoute(path: '/branches', builder: (ctx, _) => const BranchManagementScreen()),
+          GoRoute(path: '/shift-closing', builder: (ctx, _) => const ShiftClosingScreen()),
+          GoRoute(path: '/audit-logs', builder: (ctx, _) => const AuditLogScreen()),
         ],
       ),
     ],

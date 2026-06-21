@@ -29,7 +29,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Restaurant profile
-            _SectionHeader('Branch Details'),
+            const _SectionHeader('Branch Details'),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(16),
@@ -49,7 +49,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             const SizedBox(height: 24),
             // Printer Configuration
-            _SectionHeader('Thermal Printer Settings (ESC/POS)'),
+            const _SectionHeader('Thermal Printer Settings (ESC/POS)'),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(16),
@@ -58,7 +58,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 SwitchListTile(
                   title: Text('Auto-print KOT on send', style: GoogleFonts.outfit(fontSize: 13, color: AppColors.textPrimary)),
                   value: _printKotAutomatically,
-                  activeColor: AppColors.primary,
+                  activeThumbColor: AppColors.primary,
                   onChanged: (v) => setState(() => _printKotAutomatically = v),
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -66,7 +66,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 SwitchListTile(
                   title: Text('Auto-print receipt on settle', style: GoogleFonts.outfit(fontSize: 13, color: AppColors.textPrimary)),
                   value: _printReceiptAutomatically,
-                  activeColor: AppColors.primary,
+                  activeThumbColor: AppColors.primary,
                   onChanged: (v) => setState(() => _printReceiptAutomatically = v),
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -82,16 +82,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             const SizedBox(height: 24),
             // Security / System info
-            _SectionHeader('System Info'),
+            const _SectionHeader('System Info'),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
-              child: Column(children: [
+              child: const Column(children: [
                 _InfoRow('App Version', '1.0.0'),
-                const Divider(),
+                Divider(),
                 _InfoRow('Database Host', 'Supabase Cloud'),
-                const Divider(),
+                Divider(),
                 _InfoRow('Local Cache Status', 'Ready'),
               ]),
             ),

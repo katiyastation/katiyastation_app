@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:uuid/uuid.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -65,7 +64,7 @@ class BarScreen extends ConsumerWidget {
                     const Spacer(),
                     Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                       Text('Total Bottles', style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textSecondary)),
-                      Text('${items.fold<double>(0, (s, i) => s + i.currentBottles).toStringAsFixed(1)}',
+                      Text(items.fold<double>(0, (s, i) => s + i.currentBottles).toStringAsFixed(1),
                           style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.primary)),
                     ]),
                   ]),
@@ -82,7 +81,7 @@ class BarScreen extends ConsumerWidget {
                           style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.primary, letterSpacing: 1.5)),
                     ),
                     ...catItems.map((item) => _BarStockCard(item: item, ref: ref)
-                        .animate().fadeIn(duration: 300.ms)).toList(),
+                        .animate().fadeIn(duration: 300.ms)),
                     const SizedBox(height: 16),
                   ]);
                 }),
@@ -107,7 +106,7 @@ class BarScreen extends ConsumerWidget {
         TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name (e.g. Old Monk Rum)')),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          value: category,
+          initialValue: category,
           decoration: const InputDecoration(labelText: 'Category'),
           onChanged: (v) => set(() => category = v!),
           items: const [

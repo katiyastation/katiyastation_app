@@ -4,7 +4,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -127,7 +126,7 @@ class _ExpenseScreenState extends ConsumerState<ExpenseScreen> {
         TextField(controller: titleCtrl, decoration: const InputDecoration(labelText: 'Title *')),
         const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          value: category,
+          initialValue: category,
           decoration: const InputDecoration(labelText: 'Category'),
           onChanged: (v) => set(() => category = v!),
           items: _categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),

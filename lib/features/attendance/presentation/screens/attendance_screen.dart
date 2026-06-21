@@ -4,7 +4,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -71,7 +70,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                           size: 56,
                           color: checkedOut ? AppColors.textSecondary : (checkedIn ? AppColors.success : AppColors.primary),
                         ),
-                      ).animate().scale(duration: 400.ms, curve: Curves.backOut),
+                      ).animate().scale(duration: 400.ms, curve: Curves.easeOutBack),
                       const SizedBox(height: 32),
                       Text(
                         checkedOut ? 'Shift Completed' : (checkedIn ? 'You are Checked In' : 'Not Checked In Yet'),
@@ -85,7 +84,7 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                                 ? 'Checked in at: ${DateFormat('hh:mm a').format(DateTime.parse(_todayRecord!['check_in']))}' 
                                 : 'Press the button below to mark check-in for today'),
                         style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 14),
-                        textAlign: Center,
+                        textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 48),
                       if (!checkedIn)

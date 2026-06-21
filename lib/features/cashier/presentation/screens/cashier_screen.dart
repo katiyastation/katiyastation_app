@@ -1,17 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
-import '../../../orders/presentation/providers/order_provider.dart';
-import '../../domain/entities/bill_entities.dart';
 
 class CashierScreen extends ConsumerStatefulWidget {
   final String sessionId;
@@ -236,7 +232,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
                           Switch(
                             value: _applyServiceCharge,
                             onChanged: (v) => setState(() => _applyServiceCharge = v),
-                            activeColor: AppColors.primary,
+                            activeThumbColor: AppColors.primary,
                           ),
                         ],
                       ),
@@ -247,7 +243,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
                           Switch(
                             value: _applyVat,
                             onChanged: (v) => setState(() => _applyVat = v),
-                            activeColor: AppColors.primary,
+                            activeThumbColor: AppColors.primary,
                           ),
                         ],
                       ),
@@ -310,12 +306,12 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          _PaymentChip('Cash', 'cash', Icons.money_rounded),
-                          _PaymentChip('Card', 'card', Icons.credit_card_rounded),
-                          _PaymentChip('eSewa', 'esewa', Icons.phone_android_rounded),
-                          _PaymentChip('Khalti', 'khalti', Icons.account_balance_wallet_rounded),
-                          _PaymentChip('FonePay', 'fonepay', Icons.qr_code_scanner_rounded),
-                          _PaymentChip('Credit', 'credit', Icons.receipt_long_rounded),
+                          _buildPaymentChip('Cash', 'cash', Icons.money_rounded),
+                          _buildPaymentChip('Card', 'card', Icons.credit_card_rounded),
+                          _buildPaymentChip('eSewa', 'esewa', Icons.phone_android_rounded),
+                          _buildPaymentChip('Khalti', 'khalti', Icons.account_balance_wallet_rounded),
+                          _buildPaymentChip('FonePay', 'fonepay', Icons.qr_code_scanner_rounded),
+                          _buildPaymentChip('Credit', 'credit', Icons.receipt_long_rounded),
                         ],
                       ),
                       const SizedBox(height: 16),
@@ -385,7 +381,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
     );
   }
 
-  Widget _PaymentChip(String label, String value, IconData icon) {
+  Widget _buildPaymentChip(String label, String value, IconData icon) {
     final isSelected = _paymentMethod == value;
     return GestureDetector(
       onTap: () => setState(() => _paymentMethod = value),

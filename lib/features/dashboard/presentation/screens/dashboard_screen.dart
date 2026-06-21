@@ -16,8 +16,6 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(authNotifierProvider);
-    final profile = profileAsync.value;
-    final fmt = NumberFormat('#,##0.00');
     final supabase = ref.watch(supabaseProvider);
 
     return Scaffold(
@@ -57,34 +55,34 @@ class DashboardScreen extends ConsumerWidget {
                     children: [
                       // Manager dashboard
                       if (profile.isBranchManager) ...[
-                        _SectionHeader('Today\'s Overview'),
+                        const _SectionHeader('Today\'s Overview'),
                         const SizedBox(height: 16),
                         _ManagerStatsGrid(supabase: supabase),
                         const SizedBox(height: 24),
-                        _SectionHeader('Quick Actions'),
+                        const _SectionHeader('Quick Actions'),
                         const SizedBox(height: 16),
                         _QuickActionsGrid(role: profile.role),
                       ]
                       // Cashier dashboard
                       else if (profile.isCashier) ...[
-                        _SectionHeader('Cashier Station'),
+                        const _SectionHeader('Cashier Station'),
                         const SizedBox(height: 16),
                         _QuickActionsGrid(role: profile.role),
                       ]
                       // Waiter dashboard
                       else if (profile.isWaiter) ...[
-                        _SectionHeader('My Tables'),
+                        const _SectionHeader('My Tables'),
                         const SizedBox(height: 16),
                         _WaiterQuickNav(),
                       ]
                       // Kitchen dashboard
                       else if (profile.isKitchen) ...[
-                        _SectionHeader('Kitchen Orders'),
+                        const _SectionHeader('Kitchen Orders'),
                         const SizedBox(height: 16),
                         _KitchenQuickNav(),
                       ]
                       else ...[
-                        _SectionHeader('Welcome'),
+                        const _SectionHeader('Welcome'),
                         const SizedBox(height: 16),
                         _QuickActionsGrid(role: profile.role),
                       ],

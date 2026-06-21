@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../providers/kitchen_provider.dart';
 import '../../../orders/domain/entities/order_entities.dart';
@@ -253,7 +252,7 @@ class _KotCard extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             child: itemsAsync.when(
               loading: () => const SizedBox(height: 30, child: LinearProgressIndicator()),
-              error: (e, _) => Text('Error loading items', style: TextStyle(color: AppColors.error, fontSize: 12)),
+              error: (e, _) => const Text('Error loading items', style: TextStyle(color: AppColors.error, fontSize: 12)),
               data: (items) => Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: items.map((item) => Padding(

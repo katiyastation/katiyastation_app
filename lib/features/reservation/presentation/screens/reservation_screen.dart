@@ -4,9 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/app_constants.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
@@ -71,13 +69,15 @@ class _ReservationScreenState extends ConsumerState<ReservationScreen> {
               error: (e, _) => Center(child: Text('Error: $e')),
               data: (rows) {
                 final filtered = _filter == 'all' ? rows : rows.where((r) => r['status'] == _filter).toList();
-                if (filtered.isEmpty) return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                if (filtered.isEmpty) {
+                  return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                   const Icon(Icons.event_seat_outlined, size: 64, color: AppColors.textHint),
                   const SizedBox(height: 16),
                   Text('No reservations found', style: GoogleFonts.outfit(color: AppColors.textSecondary)),
                   const SizedBox(height: 12),
                   ElevatedButton(onPressed: () => _showAddDialog(context), child: const Text('Add Reservation')),
                 ]));
+                }
                 return ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: filtered.length,
@@ -199,7 +199,7 @@ class _ReservationScreenState extends ConsumerState<ReservationScreen> {
 
   Future<DateTime?> showDateTimePicker(BuildContext context, DateTime initial) async {
     final date = await showDatePicker(context: context, initialDate: initial, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 90)));
-    if (date == null) return null;
+    if (date == null || !context.mounted) return null;
     final time = await showTimePicker(context: context, initialTime: TimeOfDay.fromDateTime(initial));
     if (time == null) return null;
     return DateTime(date.year, date.month, date.day, time.hour, time.minute);

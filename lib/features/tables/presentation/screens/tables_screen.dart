@@ -3,8 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:uuid/uuid.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -149,10 +147,10 @@ class _TablesScreenState extends ConsumerState<TablesScreen> {
     if (table.isAvailable) {
       // Ask to open session
       final guestCount = await _showGuestCountDialog(context);
-      if (guestCount == null || !mounted) return;
+      if (guestCount == null || !context.mounted) return;
       final session = await ref.read(tableNotifierProvider.notifier)
           .openSession(table.id, guestCount: guestCount);
-      if (session != null && mounted) {
+      if (session != null && context.mounted) {
         context.go('/tables/${table.id}/order?sessionId=${session.id}');
       }
     } else if (table.isOccupied) {
@@ -160,7 +158,7 @@ class _TablesScreenState extends ConsumerState<TablesScreen> {
       final sessionAsync = ref.read(tableSessionProvider(table.id));
       sessionAsync.when(
         data: (session) {
-          if (session != null) {
+          if (session != null && context.mounted) {
             context.go('/tables/${table.id}/order?sessionId=${session.id}');
           }
         },
@@ -174,7 +172,7 @@ class _TablesScreenState extends ConsumerState<TablesScreen> {
           .eq('table_id', table.id)
           .eq('status', 'open')
           .maybeSingle();
-      if (session != null && mounted) {
+      if (session != null && context.mounted) {
         context.go('/tables/${table.id}/order?sessionId=${session['id']}');
       }
     }
@@ -264,7 +262,7 @@ class _TablesScreenState extends ConsumerState<TablesScreen> {
               if (numCtrl.text.isEmpty) return;
               await ref.read(tableNotifierProvider.notifier)
                   .addTable(numCtrl.text.trim(), sectionCtrl.text.trim(), capacity);
-              if (mounted) Navigator.pop(ctx);
+              if (ctx.mounted) Navigator.pop(ctx);
             },
             child: const Text('Add'),
           ),

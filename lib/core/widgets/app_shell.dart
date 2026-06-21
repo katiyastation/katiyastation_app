@@ -132,9 +132,9 @@ class _SideNavRailState extends State<_SideNavRail> {
                 Container(
                   width: 40,
                   height: 40,
-                  decoration: BoxDecoration(
+                  decoration: const BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: const LinearGradient(colors: [AppColors.primary, AppColors.primaryDark]),
+                    gradient: LinearGradient(colors: [AppColors.primary, AppColors.primaryDark]),
                   ),
                   child: const Icon(Icons.restaurant_rounded, size: 22, color: AppColors.onPrimary),
                 ),

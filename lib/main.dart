@@ -11,7 +11,7 @@ void main() async {
 
   await Supabase.initialize(
     url: SupabaseConstants.supabaseUrl,
-    anonKey: SupabaseConstants.supabaseAnonKey,
+    publishableKey: SupabaseConstants.supabaseAnonKey,
     realtimeClientOptions: const RealtimeClientOptions(
       logLevel: RealtimeLogLevel.info,
     ),

@@ -40,7 +40,7 @@ dependencies:
 
   # Printing (ESC/POS)
   flutter_pos_printer_platform_image_3: ^1.2.3
-  esc_pos_utils_plus: ^2.0.6
+  esc_pos_utils_plus: ^2.0.4
 
   # Secure Storage
   flutter_secure_storage: ^9.2.2

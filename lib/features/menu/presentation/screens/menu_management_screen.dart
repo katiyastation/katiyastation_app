@@ -3,11 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:uuid/uuid.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../menu/domain/entities/menu_entities.dart';
+import '../widgets/recipe_dialog.dart';
 
 // All categories stream
 final menuCategoriesStreamProvider = StreamProvider<List<MenuCategory>>((ref) {
@@ -141,7 +142,11 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
               Expanded(
                 child: _selectedCatId == null
                     ? const Center(child: Text('Select a category', style: TextStyle(color: AppColors.textSecondary)))
-                    : _ItemsGrid(catId: _selectedCatId!),
+                    : _ItemsGrid(
+                        catId: _selectedCatId!,
+                        onEdit: (item) => _showItemDialog(context, item),
+                        onDelete: (id) => _deleteItem(id),
+                      ),
               ),
             ],
           );
@@ -162,7 +167,7 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
             TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Category Name')),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: type,
+              initialValue: type,
               decoration: const InputDecoration(labelText: 'Type'),
               onChanged: (v) => set(() => type = v!),
               items: const [
@@ -250,11 +255,34 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
     await supabase.from(SupabaseConstants.menuCategories).delete().eq('id', id);
     if (_selectedCatId == id) setState(() => _selectedCatId = null);
   }
+
+  Future<void> _deleteItem(String id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Menu Item'),
+        content: const Text('Are you sure you want to delete this menu item?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final supabase = ref.read(supabaseProvider);
+    await supabase.from(SupabaseConstants.menuItems).delete().eq('id', id);
+  }
 }
 
 class _ItemsGrid extends ConsumerWidget {
   final String catId;
-  const _ItemsGrid({required this.catId});
+  final ValueChanged<MenuItem> onEdit;
+  final ValueChanged<String> onDelete;
+  const _ItemsGrid({required this.catId, required this.onEdit, required this.onDelete});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -274,8 +302,12 @@ class _ItemsGrid extends ConsumerWidget {
                 maxCrossAxisExtent: 240, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 1.3,
               ),
               itemCount: items.length,
-              itemBuilder: (ctx, i) => _MenuItemCard(item: items[i], ref: ref)
-                  .animate().fadeIn(delay: Duration(milliseconds: i * 30)).scale(begin: const Offset(0.95, 0.95)),
+              itemBuilder: (ctx, i) => _MenuItemCard(
+                item: items[i],
+                ref: ref,
+                onEdit: () => onEdit(items[i]),
+                onDelete: () => onDelete(items[i].id),
+              ).animate().fadeIn(delay: Duration(milliseconds: i * 30)).scale(begin: const Offset(0.95, 0.95)),
             ),
     );
   }
@@ -284,7 +316,14 @@ class _ItemsGrid extends ConsumerWidget {
 class _MenuItemCard extends StatelessWidget {
   final MenuItem item;
   final WidgetRef ref;
-  const _MenuItemCard({required this.item, required this.ref});
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  const _MenuItemCard({
+    required this.item,
+    required this.ref,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -298,14 +337,44 @@ class _MenuItemCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            height: 72,
-            decoration: BoxDecoration(
-              color: AppColors.surfaceVariant,
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
-            ),
-            alignment: Alignment.center,
-            child: const Icon(Icons.restaurant_rounded, color: AppColors.textHint, size: 32),
+          Stack(
+            children: [
+              Container(
+                height: 72,
+                decoration: const BoxDecoration(
+                  color: AppColors.surfaceVariant,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(11)),
+                ),
+                alignment: Alignment.center,
+                child: const Icon(Icons.restaurant_rounded, color: AppColors.textHint, size: 32),
+              ),
+              Positioned(
+                top: 4,
+                right: 4,
+                child: PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert_rounded, color: AppColors.textSecondary, size: 18),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onSelected: (val) {
+                    if (val == 'edit') {
+                      onEdit();
+                    } else if (val == 'recipe') {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => RecipeDialog(item: item),
+                      );
+                    } else if (val == 'delete') {
+                      onDelete();
+                    }
+                  },
+                  itemBuilder: (ctx) => [
+                    const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                    const PopupMenuItem(value: 'recipe', child: Text('Recipe')),
+                    const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                  ],
+                ),
+              ),
+            ],
           ),
           Padding(
             padding: const EdgeInsets.all(10),
