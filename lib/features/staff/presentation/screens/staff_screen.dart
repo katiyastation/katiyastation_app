@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
@@ -55,7 +56,36 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
         children: [
           // Staff list
           _loading
-              ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+              ? Skeletonizer(
+                  enabled: true,
+                  effect: const ShimmerEffect(
+                    baseColor: AppColors.surfaceVariant,
+                    highlightColor: AppColors.surface,
+                  ),
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: 6,
+                    itemBuilder: (_, i) => Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+                      child: Row(children: [
+                        const CircleAvatar(radius: 22, backgroundColor: AppColors.surfaceVariant),
+                        const SizedBox(width: 14),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Container(height: 14, width: 140, color: AppColors.surfaceVariant),
+                          const SizedBox(height: 6),
+                          Container(height: 11, width: 100, color: AppColors.surfaceVariant),
+                        ])),
+                        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                          Container(height: 22, width: 60, decoration: BoxDecoration(color: AppColors.surfaceVariant, borderRadius: BorderRadius.circular(8))),
+                          const SizedBox(height: 4),
+                          Container(height: 11, width: 80, color: AppColors.surfaceVariant),
+                        ]),
+                      ]),
+                    ),
+                  ),
+                )
               : _staff.isEmpty
                   ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                       const Icon(Icons.badge_outlined, size: 64, color: AppColors.textHint),

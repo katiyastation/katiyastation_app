@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:responsive_framework/responsive_framework.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/constants/supabase_constants.dart';
@@ -31,6 +32,14 @@ class KatiyaStationApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
       routerConfig: router,
+      builder: (context, child) => ResponsiveBreakpoints.builder(
+        child: child!,
+        breakpoints: [
+          const Breakpoint(start: 0, end: 599, name: MOBILE),
+          const Breakpoint(start: 600, end: 899, name: TABLET),
+          const Breakpoint(start: 900, end: double.infinity, name: DESKTOP),
+        ],
+      ),
     );
   }
 }

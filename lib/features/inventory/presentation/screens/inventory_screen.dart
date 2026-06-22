@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:google_fonts/google_fonts.dart';
+import 'package:pluto_grid/pluto_grid.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
@@ -26,6 +28,101 @@ class InventoryScreen extends ConsumerStatefulWidget {
 class _InventoryScreenState extends ConsumerState<InventoryScreen> {
   String _filter = 'all';
   String _search = '';
+  PlutoGridStateManager? _gridManager;
+
+  List<PlutoColumn> get _columns => [
+    PlutoColumn(
+      title: 'Item Name',
+      field: 'name',
+      type: PlutoColumnType.text(),
+      width: 220,
+      titleTextAlign: PlutoColumnTextAlign.left,
+      renderer: (ctx) => Text(
+        ctx.cell.value as String,
+        style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+      ),
+    ),
+    PlutoColumn(
+      title: 'Unit',
+      field: 'unit',
+      type: PlutoColumnType.text(),
+      width: 90,
+      titleTextAlign: PlutoColumnTextAlign.center,
+      textAlign: PlutoColumnTextAlign.center,
+    ),
+    PlutoColumn(
+      title: 'Current Stock',
+      field: 'stock',
+      type: PlutoColumnType.number(format: '#,##0.##'),
+      width: 140,
+      titleTextAlign: PlutoColumnTextAlign.right,
+      textAlign: PlutoColumnTextAlign.right,
+      renderer: (ctx) {
+        final row = ctx.row;
+        final status = row.cells['status']?.value as String? ?? 'ok';
+        final color = status == 'out'
+            ? AppColors.error
+            : status == 'low'
+                ? AppColors.warning
+                : AppColors.success;
+        final unit = row.cells['unit']?.value as String? ?? '';
+        return Text(
+          '${ctx.cell.value} $unit',
+          style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w700, color: color),
+          textAlign: TextAlign.right,
+        );
+      },
+    ),
+    PlutoColumn(
+      title: 'Reorder Level',
+      field: 'reorder',
+      type: PlutoColumnType.number(format: '#,##0.##'),
+      width: 130,
+      titleTextAlign: PlutoColumnTextAlign.right,
+      textAlign: PlutoColumnTextAlign.right,
+    ),
+    PlutoColumn(
+      title: 'Status',
+      field: 'status',
+      type: PlutoColumnType.text(),
+      width: 110,
+      titleTextAlign: PlutoColumnTextAlign.center,
+      textAlign: PlutoColumnTextAlign.center,
+      renderer: (ctx) {
+        final status = ctx.cell.value as String;
+        final color = status == 'out'
+            ? AppColors.error
+            : status == 'low'
+                ? AppColors.warning
+                : AppColors.success;
+        final label = status == 'out' ? 'OUT' : status == 'low' ? 'LOW' : 'OK';
+        return Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: color.withValues(alpha: 0.4)),
+            ),
+            child: Text(label, style: GoogleFonts.outfit(fontSize: 11, color: color, fontWeight: FontWeight.w700)),
+          ),
+        );
+      },
+    ),
+  ];
+
+  List<PlutoRow> _buildRows(List<InventoryItem> items) {
+    return items.map((item) {
+      final status = item.isOut ? 'out' : item.isLow ? 'low' : 'ok';
+      return PlutoRow(cells: {
+        'name': PlutoCell(value: item.name),
+        'unit': PlutoCell(value: item.unit),
+        'stock': PlutoCell(value: item.currentStock),
+        'reorder': PlutoCell(value: item.reorderLevel),
+        'status': PlutoCell(value: status),
+      });
+    }).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -41,16 +138,23 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
       ),
       body: Column(
         children: [
+          // Search + filter bar
           Container(
             color: AppColors.surface, padding: const EdgeInsets.all(12),
             child: Row(children: [
               Expanded(child: TextField(
                 decoration: const InputDecoration(hintText: 'Search items...', prefixIcon: Icon(Icons.search, size: 18), isDense: true),
-                onChanged: (v) => setState(() => _search = v.toLowerCase()),
+                onChanged: (v) {
+                  setState(() => _search = v.toLowerCase());
+                  _applyGridFilter();
+                },
               )),
               const SizedBox(width: 12),
               ...['all', 'low', 'out'].map((f) => GestureDetector(
-                onTap: () => setState(() => _filter = f),
+                onTap: () {
+                  setState(() => _filter = f);
+                  _applyGridFilter();
+                },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
                   margin: const EdgeInsets.only(left: 8),
@@ -65,15 +169,15 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               )),
             ]),
           ),
-          const Divider(height: 1),
+          // Stats chips
           itemsAsync.when(
-            loading: () => const SizedBox(height: 60, child: LinearProgressIndicator()),
+            loading: () => const SizedBox(height: 40, child: LinearProgressIndicator()),
             error: (_, __) => const SizedBox(),
             data: (items) {
               final low = items.where((i) => i.isLow).length;
               final out = items.where((i) => i.isOut).length;
               return Container(
-                color: AppColors.surface, padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                color: AppColors.surface, padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
                 child: Row(children: [
                   _SChip('Total', '${items.length}', AppColors.info),
                   const SizedBox(width: 8),
@@ -87,7 +191,32 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
           const Divider(height: 1),
           Expanded(
             child: itemsAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+              loading: () => Skeletonizer(
+                enabled: true,
+                effect: const ShimmerEffect(
+                  baseColor: AppColors.surfaceVariant,
+                  highlightColor: AppColors.surface,
+                ),
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: 8,
+                  itemBuilder: (_, i) => Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(12)),
+                    child: Row(children: [
+                      Container(width: 44, height: 44, decoration: BoxDecoration(color: AppColors.surfaceVariant, borderRadius: BorderRadius.circular(10))),
+                      const SizedBox(width: 14),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Container(height: 14, width: 140, color: AppColors.surfaceVariant),
+                        const SizedBox(height: 6),
+                        Container(height: 11, width: 100, color: AppColors.surfaceVariant),
+                      ])),
+                      Container(height: 14, width: 60, color: AppColors.surfaceVariant),
+                    ]),
+                  ),
+                ),
+              ),
               error: (e, _) => Center(child: Text('Error: $e')),
               data: (items) {
                 var filtered = items.where((i) {
@@ -97,20 +226,49 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
                   return true;
                 }).toList();
 
-                if (filtered.isEmpty) return Center(child: Text('No items found', style: GoogleFonts.outfit(color: AppColors.textSecondary)));
+                if (filtered.isEmpty) {
+                  return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    const Icon(Icons.inventory_2_outlined, size: 64, color: AppColors.textHint),
+                    const SizedBox(height: 16),
+                    Text('No items found', style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 16)),
+                  ]));
+                }
 
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: filtered.length,
-                  itemBuilder: (ctx, i) => _InventoryTile(item: filtered[i], ref: ref)
-                      .animate().fadeIn(delay: Duration(milliseconds: i * 25)),
-                );
+                return PlutoGrid(
+                  columns: _columns,
+                  rows: _buildRows(filtered),
+                  onLoaded: (e) {
+                    _gridManager = e.stateManager;
+                    _gridManager!.setShowColumnFilter(true);
+                  },
+                  configuration: PlutoGridConfiguration(
+                    style: PlutoGridStyleConfig(
+                      gridBackgroundColor: AppColors.background,
+                      rowColor: AppColors.surface,
+                      oddRowColor: AppColors.surfaceVariant,
+                      activatedColor: AppColors.primary.withValues(alpha: 0.08),
+                      activatedBorderColor: AppColors.primary,
+                      gridBorderColor: AppColors.border,
+                      columnTextStyle: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                      cellTextStyle: GoogleFonts.outfit(fontSize: 13, color: AppColors.textPrimary),
+                      columnHeight: 46,
+                      rowHeight: 52,
+                      borderColor: AppColors.border,
+                      inactivatedBorderColor: AppColors.border,
+                    ),
+                  ),
+                ).animate().fadeIn(duration: 300.ms);
               },
             ),
           ),
         ],
       ),
     );
+  }
+
+  void _applyGridFilter() {
+    // PlutoGrid filter is applied by rebuilding with filtered rows via state
+    setState(() {});
   }
 
   void _showAddDialog(BuildContext context) {
@@ -166,41 +324,4 @@ class _SChip extends StatelessWidget {
     decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8), border: Border.all(color: color.withValues(alpha: 0.2))),
     child: Text('$label: $value', style: GoogleFonts.outfit(fontSize: 12, color: color, fontWeight: FontWeight.w500)),
   );
-}
-
-class _InventoryTile extends StatelessWidget {
-  final InventoryItem item; final WidgetRef ref;
-  const _InventoryTile({required this.item, required this.ref});
-
-  Color get _color => item.isOut ? AppColors.error : item.isLow ? AppColors.warning : AppColors.success;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(12), border: Border.all(color: _color.withValues(alpha: 0.2))),
-      child: Row(children: [
-        Container(
-          width: 44, height: 44,
-          decoration: BoxDecoration(color: _color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-          child: Icon(Icons.inventory_2_rounded, color: _color, size: 22),
-        ),
-        const SizedBox(width: 14),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(item.name, style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-          Text('Reorder at: ${item.reorderLevel} ${item.unit}', style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textSecondary)),
-        ])),
-        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          Text('${item.currentStock} ${item.unit}', style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.w700, color: _color)),
-          Container(
-            margin: const EdgeInsets.only(top: 3),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(color: _color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
-            child: Text(item.isOut ? 'OUT' : item.isLow ? 'LOW' : 'OK', style: GoogleFonts.outfit(fontSize: 10, color: _color, fontWeight: FontWeight.w600)),
-          ),
-        ]),
-      ]),
-    );
-  }
 }

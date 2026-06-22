@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:google_fonts/google_fonts.dart';
+import 'package:lottie/lottie.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../providers/kitchen_provider.dart';
 import '../../../orders/domain/entities/order_entities.dart';
@@ -45,11 +47,30 @@ class KitchenScreen extends ConsumerWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.check_circle_outline_rounded, size: 80, color: AppColors.success),
-                  const SizedBox(height: 20),
-                  Text('All caught up!', style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                  Lottie.network(
+                    'https://assets9.lottiefiles.com/packages/lf20_touohxv0.json',
+                    width: 220,
+                    height: 220,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const Icon(
+                      Icons.check_circle_outline_rounded,
+                      size: 80,
+                      color: AppColors.success,
+                    ),
+                  ),
+                  Text(
+                    'All caught up!',
+                    style: GoogleFonts.outfit(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.2),
                   const SizedBox(height: 8),
-                  Text('No pending kitchen orders', style: GoogleFonts.outfit(color: AppColors.textSecondary)),
+                  Text(
+                    'No pending kitchen orders',
+                    style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 15),
+                  ).animate().fadeIn(delay: 350.ms),
                 ],
               ),
             );
@@ -251,7 +272,23 @@ class _KotCard extends ConsumerWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             child: itemsAsync.when(
-              loading: () => const SizedBox(height: 30, child: LinearProgressIndicator()),
+              loading: () => Skeletonizer(
+                enabled: true,
+                effect: const ShimmerEffect(
+                  baseColor: AppColors.surfaceVariant,
+                  highlightColor: AppColors.surface,
+                ),
+                child: Column(
+                  children: List.generate(3, (i) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(children: [
+                      Container(width: 24, height: 24, decoration: BoxDecoration(color: AppColors.surfaceVariant, borderRadius: BorderRadius.circular(6))),
+                      const SizedBox(width: 8),
+                      Container(height: 13, width: 120, color: AppColors.surfaceVariant),
+                    ]),
+                  )),
+                ),
+              ),
               error: (e, _) => const Text('Error loading items', style: TextStyle(color: AppColors.error, fontSize: 12)),
               data: (items) => Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

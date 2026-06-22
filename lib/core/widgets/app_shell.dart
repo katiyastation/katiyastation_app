@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:responsive_framework/responsive_framework.dart';
 import '../constants/app_colors.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../router/app_router.dart';
@@ -17,7 +18,7 @@ class AppShell extends ConsumerWidget {
     final profileAsync = ref.watch(authNotifierProvider);
     final profile = profileAsync.value;
     final navItems = getNavItemsForRole(profile?.role);
-    final isWide = MediaQuery.of(context).size.width > 900;
+    final isWide = ResponsiveBreakpoints.of(context).isDesktop;
 
     if (isWide) {
       return Scaffold(
@@ -243,26 +244,38 @@ class _NavTile extends StatelessWidget {
           margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
           padding: EdgeInsets.symmetric(horizontal: collapsed ? 12 : 16, vertical: 10),
           decoration: BoxDecoration(
-            color: isActive ? AppColors.primary.withValues(alpha: 0.15) : Colors.transparent,
+            color: isActive ? AppColors.primary.withValues(alpha: 0.12) : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
-            border: isActive ? Border.all(color: AppColors.primary.withValues(alpha: 0.3)) : null,
+            border: isActive ? Border.all(color: AppColors.primary.withValues(alpha: 0.25)) : null,
           ),
           child: Row(
             mainAxisAlignment: collapsed ? MainAxisAlignment.center : MainAxisAlignment.start,
             children: [
+              // Red left accent bar on active item
+              if (!collapsed)
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  width: 3,
+                  height: 20,
+                  margin: const EdgeInsets.only(right: 12),
+                  decoration: BoxDecoration(
+                    color: isActive ? AppColors.primary : Colors.transparent,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
               Icon(
                 isActive ? item.activeIcon : item.icon,
                 color: isActive ? AppColors.primary : AppColors.textSecondary,
                 size: 20,
               ),
               if (!collapsed) ...[
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 Text(
                   item.label,
                   style: GoogleFonts.outfit(
                     fontSize: 14,
                     fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-                    color: isActive ? AppColors.primary : AppColors.textSecondary,
+                    color: isActive ? AppColors.textPrimary : AppColors.textSecondary,
                   ),
                 ),
               ],

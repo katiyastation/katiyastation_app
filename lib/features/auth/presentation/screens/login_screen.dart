@@ -86,7 +86,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Color(0xFF1A1208), Color(0xFF0D0D0D), Color(0xFF1A0A00)],
+                  colors: [Color(0xFFB71C1C), Color(0xFFC62828), Color(0xFF8B0000)],
                 ),
               ),
               child: Stack(
@@ -128,7 +128,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           style: GoogleFonts.outfit(
                             fontSize: 32,
                             fontWeight: FontWeight.w800,
-                            color: AppColors.primary,
+                            color: Colors.white,
                             letterSpacing: 3,
                           ),
                         ).animate().fadeIn(delay: 400.ms, duration: 500.ms).slideY(begin: 0.3),
@@ -138,7 +138,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           style: GoogleFonts.outfit(
                             fontSize: 16,
                             fontWeight: FontWeight.w300,
-                            color: AppColors.textSecondary,
+                            color: Colors.white70,
                             letterSpacing: 4,
                           ),
                         ).animate().fadeIn(delay: 600.ms, duration: 500.ms),
@@ -303,18 +303,18 @@ class _FeaturePill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.1),
+        color: Colors.white.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: AppColors.primary, size: 18),
+          Icon(icon, color: Colors.white, size: 18),
           const SizedBox(width: 10),
           Text(
             label,
-            style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 14),
+            style: GoogleFonts.outfit(color: Colors.white70, fontSize: 14),
           ),
         ],
       ),

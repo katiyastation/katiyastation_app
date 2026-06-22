@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:google_fonts/google_fonts.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
@@ -59,8 +60,34 @@ class _SupplierScreenState extends ConsumerState<SupplierScreen> {
           ),
           Expanded(
             child: suppliersAsync.when(
-              loading: () => const Center(
-                  child: CircularProgressIndicator(color: AppColors.primary)),
+              loading: () => Skeletonizer(
+                enabled: true,
+                effect: const ShimmerEffect(
+                  baseColor: AppColors.surfaceVariant,
+                  highlightColor: AppColors.surface,
+                ),
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: 6,
+                  itemBuilder: (_, i) => Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.border)),
+                    child: ListTile(
+                      leading: Container(width: 44, height: 44, decoration: BoxDecoration(color: AppColors.surfaceVariant, borderRadius: BorderRadius.circular(10))),
+                      title: Container(height: 14, width: 140, color: AppColors.surfaceVariant),
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Container(height: 11, width: 100, color: AppColors.surfaceVariant),
+                          const SizedBox(height: 4),
+                          Container(height: 11, width: 80, color: AppColors.surfaceVariant),
+                        ]),
+                      ),
+                      trailing: Container(width: 24, height: 24, color: AppColors.surfaceVariant),
+                    ),
+                  ),
+                ),
+              ),
               error: (e, _) => Center(child: Text('Error: $e')),
               data: (suppliers) {
                 final filtered = _search.isEmpty
