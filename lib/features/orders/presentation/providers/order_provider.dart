@@ -144,16 +144,35 @@ class OrderNotifier extends StateNotifier<List<CartItem>> {
     });
 
     // Insert KOT items
+    double newKotSubtotal = 0.0;
     for (final cartItem in state) {
+      newKotSubtotal += cartItem.item.price * cartItem.quantity;
       await supabase.from(SupabaseConstants.kotItems).insert({
         'id': const Uuid().v4(),
         'kot_id': kotId,
         'menu_item_id': cartItem.item.id,
         'name': cartItem.item.name,
         'quantity': cartItem.quantity,
+        'unit_price': cartItem.item.price,
         'note': cartItem.notes,
       });
     }
+
+    // Update session total in database
+    try {
+      final sessionRes = await supabase
+          .from(SupabaseConstants.tableSessions)
+          .select('total_amount')
+          .eq('id', sessionId)
+          .maybeSingle();
+      if (sessionRes != null) {
+        final currentTotal = (sessionRes['total_amount'] as num?)?.toDouble() ?? 0.0;
+        await supabase
+            .from(SupabaseConstants.tableSessions)
+            .update({'total_amount': currentTotal + newKotSubtotal})
+            .eq('id', sessionId);
+      }
+    } catch (_) {}
 
     // Update session total
     final kotItems = state.map((c) => KotItem(
@@ -161,6 +180,7 @@ class OrderNotifier extends StateNotifier<List<CartItem>> {
       menuItemId: c.item.id,
       menuItemName: c.item.name,
       quantity: c.quantity,
+      unitPrice: c.item.price,
     )).toList();
 
     clearCart();

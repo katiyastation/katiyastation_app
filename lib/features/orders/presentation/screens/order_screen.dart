@@ -8,6 +8,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/order_provider.dart';
 import '../../../menu/domain/entities/menu_entities.dart';
+import '../../../tables/presentation/providers/tables_provider.dart';
 
 class OrderScreen extends ConsumerStatefulWidget {
   final String tableId;
@@ -52,12 +53,61 @@ class _OrderScreenState extends ConsumerState<OrderScreen> {
           ],
         ),
         actions: [
-          if (widget.sessionId.isNotEmpty)
-            TextButton.icon(
-              icon: const Icon(Icons.receipt_long_rounded, size: 16),
-              label: const Text('Bill'),
-              onPressed: () => context.go('/cashier?sessionId=${widget.sessionId}&tableId=${widget.tableId}'),
-            ),
+          if (widget.sessionId.isNotEmpty) ...[
+            ref.watch(tablesStreamProvider).when(
+                  data: (tables) {
+                    final currentTable = tables.where((t) => t.id == widget.tableId).firstOrNull;
+                    final isBillRequested = currentTable?.billRequested ?? false;
+                    
+                    if (profile?.isWaiter == true) {
+                      if (isBillRequested) {
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: AppColors.warning.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                          ),
+                          alignment: Alignment.center,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.check_circle_outline_rounded, size: 14, color: AppColors.warning),
+                              const SizedBox(width: 6),
+                              Text('Bill Requested',
+                                  style: GoogleFonts.outfit(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.warning,
+                                  )),
+                            ],
+                          ),
+                        );
+                      } else {
+                        return TextButton.icon(
+                          icon: const Icon(Icons.receipt_long_rounded, size: 16, color: AppColors.warning),
+                          label: Text('Request Bill', style: GoogleFonts.outfit(color: AppColors.warning)),
+                          onPressed: _handleRequestBill,
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppColors.warning,
+                          ),
+                        );
+                      }
+                    } else if (profile?.isCashier == true || profile?.isBranchManager == true) {
+                      return TextButton.icon(
+                        icon: const Icon(Icons.receipt_long_rounded, size: 16),
+                        label: const Text('Settle Bill'),
+                        onPressed: () => context.go('/cashier?sessionId=${widget.sessionId}&tableId=${widget.tableId}'),
+                      );
+                    }
+                    return const SizedBox();
+                  },
+                  loading: () => const SizedBox(),
+                  error: (_, __) => const SizedBox(),
+                ),
+            const SizedBox(width: 8),
+          ],
         ],
       ),
       body: Row(
@@ -217,6 +267,36 @@ class _OrderScreenState extends ConsumerState<OrderScreen> {
     );
   }
 
+  Future<void> _handleRequestBill() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final success = await ref
+          .read(tableNotifierProvider.notifier)
+          .requestBill(widget.tableId, widget.sessionId);
+      if (success && mounted) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: AppColors.warning),
+                SizedBox(width: 10),
+                Text('Bill request sent to cashier!'),
+              ],
+            ),
+            backgroundColor: AppColors.surfaceVariant,
+          ),
+        );
+      }
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Error requesting bill: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
   Future<void> _sendKot(dynamic profile) async {
     if (profile == null) return;
     final messenger = ScaffoldMessenger.of(context);
@@ -308,7 +388,14 @@ class _MenuItemsGrid extends ConsumerWidget {
                                   color: AppColors.surfaceVariant,
                                   borderRadius: BorderRadius.circular(10),
                                 ),
-                                child: const Icon(Icons.restaurant_rounded, color: AppColors.textSecondary, size: 22),
+                                clipBehavior: Clip.antiAlias,
+                                child: item.imageUrl != null && item.imageUrl!.isNotEmpty
+                                    ? Image.network(
+                                        item.imageUrl!,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => const Icon(Icons.restaurant_rounded, color: AppColors.textSecondary, size: 22),
+                                      )
+                                    : const Icon(Icons.restaurant_rounded, color: AppColors.textSecondary, size: 22),
                               ),
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,

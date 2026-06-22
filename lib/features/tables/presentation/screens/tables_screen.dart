@@ -322,6 +322,7 @@ class _TableCard extends StatelessWidget {
   const _TableCard({required this.table, required this.onTap});
 
   Color get _statusColor {
+    if (table.billRequested) return AppColors.warning;
     if (table.isAvailable) return AppColors.tableAvailable;
     if (table.isOccupied) return AppColors.tableOccupied;
     if (table.isReserved) return AppColors.tableReserved;
@@ -330,71 +331,110 @@ class _TableCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isBillRequested = table.billRequested;
+
+    Widget card = Container(
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isBillRequested ? AppColors.warning : _statusColor.withValues(alpha: 0.4),
+          width: isBillRequested ? 2.0 : 1.5,
+        ),
+        boxShadow: isBillRequested
+            ? [
+                BoxShadow(
+                  color: AppColors.warning.withValues(alpha: 0.25),
+                  blurRadius: 10,
+                  spreadRadius: 1,
+                )
+              ]
+            : null,
+      ),
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Icon(
+                      isBillRequested ? Icons.receipt_long_rounded : Icons.table_restaurant_rounded,
+                      color: isBillRequested ? AppColors.warning : _statusColor,
+                      size: 28,
+                    ),
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: isBillRequested ? AppColors.warning : _statusColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ],
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(table.tableNumber,
+                        style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                    Text(table.section,
+                        style: GoogleFonts.outfit(fontSize: 11, color: AppColors.textSecondary)),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: isBillRequested
+                            ? AppColors.warning.withValues(alpha: 0.15)
+                            : _statusColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        isBillRequested ? 'BILL REQUESTED' : table.status.toUpperCase(),
+                        style: GoogleFonts.outfit(
+                          fontSize: 9,
+                          color: isBillRequested ? AppColors.warning : _statusColor,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ).animate(
+                      target: isBillRequested ? 1.0 : 0.0,
+                      onPlay: (c) => c.repeat(reverse: true),
+                    ).fade(duration: 800.ms, begin: 0.5, end: 1.0),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 12,
+            right: 12,
+            child: Row(
+              children: [
+                const Icon(Icons.people_outline_rounded, size: 12, color: AppColors.textHint),
+                const SizedBox(width: 2),
+                Text('${table.capacity}', style: GoogleFonts.outfit(fontSize: 11, color: AppColors.textHint)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (isBillRequested) {
+      card = card
+          .animate(onPlay: (c) => c.repeat(reverse: true))
+          .tint(color: AppColors.warning.withValues(alpha: 0.04), duration: 1000.ms);
+    }
+
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.card,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: _statusColor.withValues(alpha: 0.4), width: 1.5),
-        ),
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Icon(Icons.table_restaurant_rounded, color: _statusColor, size: 28),
-                      Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(color: _statusColor, shape: BoxShape.circle),
-                      ),
-                    ],
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(table.tableNumber,
-                          style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                      Text(table.section,
-                          style: GoogleFonts.outfit(fontSize: 11, color: AppColors.textSecondary)),
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: _statusColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          table.status.toUpperCase(),
-                          style: GoogleFonts.outfit(fontSize: 9, color: _statusColor, fontWeight: FontWeight.w700, letterSpacing: 0.5),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            Positioned(
-              top: 12,
-              right: 12,
-              child: Row(
-                children: [
-                  const Icon(Icons.people_outline_rounded, size: 12, color: AppColors.textHint),
-                  const SizedBox(width: 2),
-                  Text('${table.capacity}', style: GoogleFonts.outfit(fontSize: 11, color: AppColors.textHint)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+      child: card,
     );
   }
 }

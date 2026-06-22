@@ -10,6 +10,19 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 
 const _categories = ['Rent', 'Electricity', 'Internet', 'Gas', 'Salaries', 'Maintenance', 'Miscellaneous'];
 
+// Real-time expenses stream
+final expensesProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
+  final supabase = ref.watch(supabaseProvider);
+  final profile = ref.watch(authNotifierProvider).value;
+  if (profile == null) return const Stream.empty();
+  return supabase
+      .from(SupabaseConstants.expenses)
+      .stream(primaryKey: ['id'])
+      .eq('branch_id', profile.branchId ?? '')
+      .order('created_at', ascending: false)
+      .map((rows) => List<Map<String, dynamic>>.from(rows));
+});
+
 class ExpenseScreen extends ConsumerStatefulWidget {
   const ExpenseScreen({super.key});
   @override
@@ -18,24 +31,13 @@ class ExpenseScreen extends ConsumerStatefulWidget {
 
 class _ExpenseScreenState extends ConsumerState<ExpenseScreen> {
   final fmt = NumberFormat('#,##0.00');
-  List<Map<String, dynamic>> _expenses = [];
-  bool _loading = true;
   String _catFilter = 'All';
 
   @override
-  void initState() { super.initState(); _load(); }
-
-  Future<void> _load() async {
-    final profile = ref.read(authNotifierProvider).value;
-    if (profile == null) return;
-    final data = await ref.read(supabaseProvider).from(SupabaseConstants.expenses)
-        .select().eq('branch_id', profile.branchId ?? '').order('created_at', ascending: false);
-    if (mounted) setState(() { _expenses = List<Map<String, dynamic>>.from(data); _loading = false; });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final filtered = _catFilter == 'All' ? _expenses : _expenses.where((e) => e['category'] == _catFilter).toList();
+    final expensesAsync = ref.watch(expensesProvider);
+    final allExpenses = expensesAsync.value ?? [];
+    final filtered = _catFilter == 'All' ? allExpenses : allExpenses.where((e) => e['category'] == _catFilter).toList();
     final total = filtered.fold<double>(0, (s, e) => s + ((e['amount'] as num?)?.toDouble() ?? 0));
 
     return Scaffold(
@@ -79,9 +81,10 @@ class _ExpenseScreenState extends ConsumerState<ExpenseScreen> {
             ]),
           ),
           const Divider(height: 1),
-          Expanded(child: _loading
-            ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-            : filtered.isEmpty
+          Expanded(child: expensesAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+            error: (e, _) => Center(child: Text('Error: $e', style: const TextStyle(color: AppColors.error))),
+            data: (_) => filtered.isEmpty
               ? Center(child: Text('No expenses found', style: GoogleFonts.outfit(color: AppColors.textSecondary)))
               : ListView.builder(
                   padding: const EdgeInsets.all(16),
@@ -110,7 +113,8 @@ class _ExpenseScreenState extends ConsumerState<ExpenseScreen> {
                       ]),
                     ).animate().fadeIn(delay: Duration(milliseconds: i * 25));
                   },
-                )),
+                ),
+          )),
         ],
       ),
     );
@@ -146,7 +150,7 @@ class _ExpenseScreenState extends ConsumerState<ExpenseScreen> {
             'amount': double.tryParse(amountCtrl.text) ?? 0,
             'created_at': DateTime.now().toIso8601String(),
           });
-          if (context.mounted) { Navigator.pop(ctx); _load(); }
+          if (context.mounted) Navigator.pop(ctx);
         }, child: const Text('Save')),
       ],
     ));

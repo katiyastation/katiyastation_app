@@ -63,13 +63,20 @@ class TableNotifier extends StateNotifier<AsyncValue<void>> {
             'guest_count': guestCount,
             'total_amount': 0,
             'opened_at': DateTime.now().toIso8601String(),
+            'bill_requested': false,
+            'bill_requested_at': null,
           })
           .select()
           .single();
 
       await _supabase
           .from(SupabaseConstants.restaurantTables)
-          .update({'status': 'occupied', 'current_session_id': sessionData['id']})
+          .update({
+            'status': 'occupied',
+            'current_session_id': sessionData['id'],
+            'bill_requested': false,
+            'bill_requested_at': null,
+          })
           .eq('id', tableId);
 
       state = const AsyncValue.data(null);
@@ -77,6 +84,34 @@ class TableNotifier extends StateNotifier<AsyncValue<void>> {
     } catch (e) {
       state = AsyncValue.error(e.toString(), StackTrace.current);
       return null;
+    }
+  }
+
+  Future<bool> requestBill(String tableId, String sessionId) async {
+    state = const AsyncValue.loading();
+    try {
+      final now = DateTime.now().toIso8601String();
+      await _supabase
+          .from(SupabaseConstants.tableSessions)
+          .update({
+            'bill_requested': true,
+            'bill_requested_at': now,
+          })
+          .eq('id', sessionId);
+
+      await _supabase
+          .from(SupabaseConstants.restaurantTables)
+          .update({
+            'bill_requested': true,
+            'bill_requested_at': now,
+          })
+          .eq('id', tableId);
+
+      state = const AsyncValue.data(null);
+      return true;
+    } catch (e) {
+      state = AsyncValue.error(e.toString(), StackTrace.current);
+      return false;
     }
   }
 
@@ -94,6 +129,7 @@ class TableNotifier extends StateNotifier<AsyncValue<void>> {
         'section': section,
         'capacity': capacity,
         'status': 'available',
+        'bill_requested': false,
       });
       state = const AsyncValue.data(null);
       return true;
@@ -106,7 +142,11 @@ class TableNotifier extends StateNotifier<AsyncValue<void>> {
   Future<void> updateTableStatus(String tableId, String status) async {
     await _supabase
         .from(SupabaseConstants.restaurantTables)
-        .update({'status': status}).eq('id', tableId);
+        .update({
+          'status': status,
+          if (status == 'available') 'bill_requested': false,
+          if (status == 'available') 'bill_requested_at': null,
+        }).eq('id', tableId);
   }
 }
 

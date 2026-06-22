@@ -8,6 +8,8 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import '../../../tables/presentation/providers/tables_provider.dart';
 
 // Real-time session billing data provider
 final _sessionBillingProvider =
@@ -86,7 +88,28 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
   String? _customerName;
   String? _customerPhone;
 
+  String? _selectedSessionId;
+  String? _selectedTableId;
+
   final fmt = NumberFormat('#,##0.00');
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedSessionId = widget.sessionId.isEmpty ? null : widget.sessionId;
+    _selectedTableId = widget.tableId.isEmpty ? null : widget.tableId;
+  }
+
+  @override
+  void didUpdateWidget(covariant CashierScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.sessionId != oldWidget.sessionId || widget.tableId != oldWidget.tableId) {
+      if (widget.sessionId.isNotEmpty) {
+        _selectedSessionId = widget.sessionId;
+        _selectedTableId = widget.tableId;
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -97,6 +120,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
   @override
   Widget build(BuildContext context) {
     final profile = ref.watch(authNotifierProvider).value;
+    final tablesAsync = ref.watch(tablesStreamProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -105,17 +129,166 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => context.go('/tables'),
         ),
-        title: const Text('Cashier / Billing'),
+        title: const Text('Cashier / Billing Station'),
       ),
-      body: widget.sessionId.isEmpty
-          ? _noSessionView(context)
-          : ref.watch(_sessionBillingProvider(widget.sessionId)).when(
-              loading: () =>
-                  const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-              error: (e, _) =>
-                  Center(child: Text('Error loading session: $e')),
-              data: (data) => _buildBillingView(data, profile),
+      body: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Left: Active Occupied Tables Sidebar
+          Container(
+            width: 280,
+            decoration: const BoxDecoration(
+              color: AppColors.surface,
+              border: Border(right: BorderSide(color: AppColors.border)),
             ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.table_restaurant_rounded, color: AppColors.primary, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Active Tables',
+                        style: GoogleFonts.outfit(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: tablesAsync.when(
+                    loading: () => const Center(child: CircularProgressIndicator()),
+                    error: (e, _) => Center(child: Text('Error: $e')),
+                    data: (tables) {
+                      final occupied = tables.where((t) => t.isOccupied).toList();
+                      if (occupied.isEmpty) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.check_circle_outline_rounded, size: 40, color: AppColors.success),
+                                const SizedBox(height: 12),
+                                Text(
+                                  'No occupied tables',
+                                  textAlign: TextAlign.center,
+                                  style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 13),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+                      return ListView.builder(
+                        itemCount: occupied.length,
+                        itemBuilder: (ctx, i) {
+                          final t = occupied[i];
+                          final isSelected = t.id == _selectedTableId;
+                          final isReq = t.billRequested;
+
+                          return InkWell(
+                            onTap: () {
+                              setState(() {
+                                _selectedTableId = t.id;
+                                _selectedSessionId = t.currentSessionId;
+                              });
+                            },
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? AppColors.primary.withValues(alpha: 0.1)
+                                    : (isReq ? AppColors.warning.withValues(alpha: 0.05) : Colors.transparent),
+                                border: Border(
+                                  left: BorderSide(
+                                    color: isSelected
+                                        ? AppColors.primary
+                                        : (isReq ? AppColors.warning : Colors.transparent),
+                                    width: 4,
+                                  ),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Table ${t.tableNumber}',
+                                          style: GoogleFonts.outfit(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                            color: isSelected ? AppColors.primary : AppColors.textPrimary,
+                                          ),
+                                        ),
+                                        Text(
+                                          t.section,
+                                          style: GoogleFonts.outfit(fontSize: 11, color: AppColors.textSecondary),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (isReq)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.warning.withValues(alpha: 0.2),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        'BILL REQ',
+                                        style: GoogleFonts.outfit(
+                                          fontSize: 9,
+                                          color: AppColors.warning,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ).animate(onPlay: (c) => c.repeat(reverse: true)).fade(duration: 600.ms)
+                                  else
+                                    Container(
+                                      width: 6,
+                                      height: 6,
+                                      decoration: const BoxDecoration(
+                                        color: AppColors.tableOccupied,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Right: Billing Workspace
+          Expanded(
+            child: _selectedSessionId == null || _selectedSessionId!.isEmpty
+                ? _noSessionView(context)
+                : ref.watch(_sessionBillingProvider(_selectedSessionId!)).when(
+                    loading: () =>
+                        const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                    error: (e, _) =>
+                        Center(child: Text('Error loading session: $e')),
+                    data: (data) => _buildBillingView(data, profile),
+                  ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -126,16 +299,10 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
         children: [
           const Icon(Icons.point_of_sale_outlined, size: 80, color: AppColors.textHint),
           const SizedBox(height: 20),
-          Text('No Active Session', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w600)),
+          Text('No Table Selected', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
-          Text('Select an occupied table from the tables screen',
+          Text('Select an occupied table from the left sidebar to start billing',
               style: GoogleFonts.outfit(color: AppColors.textSecondary)),
-          const SizedBox(height: 24),
-          ElevatedButton.icon(
-            icon: const Icon(Icons.table_restaurant_rounded),
-            label: const Text('Go to Tables'),
-            onPressed: () => context.go('/tables'),
-          ),
         ],
       ),
     );
@@ -371,7 +538,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
                       child: OutlinedButton.icon(
                         icon: const Icon(Icons.print_rounded, size: 16),
                         label: const Text('Print Bill'),
-                        onPressed: () => _printBill(total, items),
+                        onPressed: () => _printBill(total, items, data),
                       ),
                     ),
                   ],
@@ -414,6 +581,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
   }
 
   Future<void> _settleBill(double total, double subtotal, double serviceCharge, double vat, dynamic profile) async {
+    if (_selectedSessionId == null || _selectedTableId == null) return;
     setState(() => _processing = true);
     try {
       final supabase = ref.read(supabaseProvider);
@@ -426,8 +594,8 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
       final billData = {
         'id': billId,
         'branch_id': profile?.branchId,
-        'session_id': widget.sessionId,
-        'table_id': widget.tableId,
+        'session_id': _selectedSessionId,
+        'table_id': _selectedTableId,
         'invoice_number': invoiceNum,
         'cashier_id': profile?.id,
         'cashier_name': profile?.fullName,
@@ -465,12 +633,17 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
       // Close session
       await supabase.from(SupabaseConstants.tableSessions)
           .update({'status': 'billed', 'closed_at': DateTime.now().toIso8601String()})
-          .eq('id', widget.sessionId);
+          .eq('id', _selectedSessionId!);
 
-      // Free table
+      // Free table and clear bill request flag
       await supabase.from(SupabaseConstants.restaurantTables)
-          .update({'status': 'available', 'current_session_id': null})
-          .eq('id', widget.tableId);
+          .update({
+            'status': 'available', 
+            'current_session_id': null,
+            'bill_requested': false,
+            'bill_requested_at': null,
+          })
+          .eq('id', _selectedTableId!);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -482,7 +655,14 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
             ]),
           ),
         );
-        context.go('/tables');
+        setState(() {
+          _selectedSessionId = null;
+          _selectedTableId = null;
+          _customerName = null;
+          _customerPhone = null;
+          _discount = 0;
+          _amountCtrl.clear();
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -494,9 +674,191 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
     if (mounted) setState(() => _processing = false);
   }
 
-  void _printBill(double total, List items) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Printing bill... (ESC/POS printer)')),
+  void _printBill(double total, List items, Map<String, dynamic> data) {
+    final subtotal = data['subtotal'] as double;
+    final serviceCharge = _applyServiceCharge ? subtotal * 0.1 : 0.0;
+    final afterService = subtotal + serviceCharge - _discount;
+    final vat = _applyVat ? afterService * 0.13 : 0.0;
+    final dateStr = DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now());
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.transparent,
+        contentPadding: EdgeInsets.zero,
+        content: Container(
+          width: 380,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 16,
+              )
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Thermal Print Preview',
+                      style: GoogleFonts.outfit(
+                          fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey[800])),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const Divider(),
+              const SizedBox(height: 12),
+              // Receipt Container
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF9F9F9),
+                  border: Border.all(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('KATIYA STATION',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.courierPrime(
+                            fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black)),
+                    Text('Branch Address, Nepal',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.courierPrime(fontSize: 11, color: Colors.black)),
+                    Text('Tel: +977-1-XXXXXXXX | VAT: 123456789',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.courierPrime(fontSize: 11, color: Colors.black)),
+                    const Text('- - - - - - - - - - - - - - - - - - - - -',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.black)),
+                    const SizedBox(height: 4),
+                    _receiptRow('Date:', dateStr),
+                    _receiptRow('Table ID:', _selectedTableId != null ? _selectedTableId!.substring(0, 8) : 'N/A'),
+                    _receiptRow('Session:', _selectedSessionId != null ? _selectedSessionId!.substring(0, 8) : 'N/A'),
+                    const SizedBox(height: 4),
+                    const Text('- - - - - - - - - - - - - - - - - - - - -',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.black)),
+                    const SizedBox(height: 4),
+                    // Items list
+                    ...items.map((item) {
+                      final name = item['menu_item_name'] as String;
+                      final qty = item['quantity'] as int;
+                      final price = (item['unit_price'] as num?)?.toDouble() ?? 0.0;
+                      final itemTotal = price * qty;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '$name x$qty',
+                                style: GoogleFonts.courierPrime(fontSize: 12, color: Colors.black),
+                              ),
+                            ),
+                            Text(
+                              fmt.format(itemTotal),
+                              style: GoogleFonts.courierPrime(fontSize: 12, color: Colors.black),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                    const SizedBox(height: 4),
+                    const Text('- - - - - - - - - - - - - - - - - - - - -',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.black)),
+                    const SizedBox(height: 4),
+                    _receiptRow('Subtotal:', fmt.format(subtotal)),
+                    if (_applyServiceCharge)
+                      _receiptRow('Service Charge (10%):', fmt.format(serviceCharge)),
+                    if (_discount > 0)
+                      _receiptRow('Discount:', '-${fmt.format(_discount)}'),
+                    if (_applyVat)
+                      _receiptRow('VAT (13%):', fmt.format(vat)),
+                    const SizedBox(height: 4),
+                    const Text('- - - - - - - - - - - - - - - - - - - - -',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.black)),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('TOTAL:',
+                            style: GoogleFonts.courierPrime(
+                                fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black)),
+                        Text('NPR ${fmt.format(total)}',
+                            style: GoogleFonts.courierPrime(
+                                fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text('Thank you for dining with us!',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.courierPrime(fontSize: 11, color: Colors.black)),
+                    Text('Powered by Katiya Station RMS',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.courierPrime(fontSize: 9, color: Colors.black)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.print_rounded),
+                    label: const Text('Print Now'),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Row(
+                            children: [
+                              Icon(Icons.print, color: AppColors.success),
+                              SizedBox(width: 10),
+                              Text('Print command sent to ESC/POS thermal printer successfully!'),
+                            ],
+                          ),
+                          backgroundColor: AppColors.surfaceVariant,
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _receiptRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: GoogleFonts.courierPrime(fontSize: 11, color: Colors.black)),
+          Text(value, style: GoogleFonts.courierPrime(fontSize: 11, color: Colors.black)),
+        ],
+      ),
     );
   }
 

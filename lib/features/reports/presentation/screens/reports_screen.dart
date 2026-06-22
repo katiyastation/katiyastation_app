@@ -6,6 +6,32 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
+// ── Real-time report stream providers ──────────────────────────────────────
+
+final _reportBillsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
+  final supabase = ref.watch(supabaseProvider);
+  final profile = ref.watch(authNotifierProvider).value;
+  if (profile?.branchId == null) return const Stream.empty();
+  return supabase
+      .from(SupabaseConstants.bills)
+      .stream(primaryKey: ['id'])
+      .eq('branch_id', profile!.branchId!)
+      .map((rows) => List<Map<String, dynamic>>.from(rows));
+});
+
+final _reportExpensesProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
+  final supabase = ref.watch(supabaseProvider);
+  final profile = ref.watch(authNotifierProvider).value;
+  if (profile?.branchId == null) return const Stream.empty();
+  return supabase
+      .from(SupabaseConstants.expenses)
+      .stream(primaryKey: ['id'])
+      .eq('branch_id', profile!.branchId!)
+      .map((rows) => List<Map<String, dynamic>>.from(rows));
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
   @override
@@ -15,75 +41,42 @@ class ReportsScreen extends ConsumerStatefulWidget {
 class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   final fmt = NumberFormat('#,##0.00');
   String _timeframe = 'Today';
-  double _sales = 0;
-  double _expenses = 0;
-  double _credits = 0;
-  int _ordersCount = 0;
-  bool _loading = true;
 
-  @override
-  void initState() { super.initState(); _loadReport(); }
-
-  Future<void> _loadReport() async {
-    setState(() => _loading = true);
-    final profile = ref.read(authNotifierProvider).value;
-    if (profile == null) return;
-    final supabase = ref.read(supabaseProvider);
-
-    DateTime start = DateTime.now();
+  DateTime get _startDate {
     final now = DateTime.now();
-    if (_timeframe == 'Today') {
-      start = DateTime(now.year, now.month, datePart(now.day));
-    } else if (_timeframe == 'Weekly') {
-      start = now.subtract(const Duration(days: 7));
-    } else {
-      start = DateTime(now.year, now.month, 1);
-    }
-
-    try {
-      final bills = await supabase.from(SupabaseConstants.bills)
-          .select('total_amount, payment_status')
-          .eq('branch_id', profile.branchId ?? '')
-          .gte('created_at', start.toIso8601String());
-
-      final expenseData = await supabase.from(SupabaseConstants.expenses)
-          .select('amount')
-          .eq('branch_id', profile.branchId ?? '')
-          .gte('created_at', start.toIso8601String());
-
-      double totalSales = 0;
-      double totalCredits = 0;
-      for (final b in bills) {
-        final amt = (b['total_amount'] as num?)?.toDouble() ?? 0;
-        if (b['payment_status'] == 'paid') {
-          totalSales += amt;
-        } else if (b['payment_status'] == 'credit') {
-          totalCredits += amt;
-        }
-      }
-
-      double totalExpenses = expenseData.fold(0.0, (s, e) => s + ((e['amount'] as num?)?.toDouble() ?? 0));
-
-      if (mounted) {
-        setState(() {
-          _sales = totalSales;
-          _credits = totalCredits;
-          _expenses = totalExpenses;
-          _ordersCount = bills.length;
-          _loading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _loading = false);
-    }
+    if (_timeframe == 'Today') return DateTime(now.year, now.month, now.day);
+    if (_timeframe == 'Weekly') return now.subtract(const Duration(days: 7));
+    return DateTime(now.year, now.month, 1);
   }
-
-  int datePart(int val) => val;
 
   @override
   Widget build(BuildContext context) {
-    final netProfit = _sales - _expenses;
+    final billsAsync = ref.watch(_reportBillsProvider);
+    final expensesAsync = ref.watch(_reportExpensesProvider);
+
+    final allBills = billsAsync.value ?? [];
+    final allExpenses = expensesAsync.value ?? [];
+
+    final start = _startDate;
+    final filteredBills = allBills.where((b) {
+      final dt = DateTime.tryParse(b['created_at'] as String? ?? '');
+      return dt != null && dt.isAfter(start);
+    }).toList();
+    final filteredExpenses = allExpenses.where((e) {
+      final dt = DateTime.tryParse(e['created_at'] as String? ?? '');
+      return dt != null && dt.isAfter(start);
+    }).toList();
+
+    double sales = 0, credits = 0;
+    for (final b in filteredBills) {
+      final amt = (b['total_amount'] as num?)?.toDouble() ?? 0;
+      if (b['payment_status'] == 'paid') sales += amt;
+      if (b['payment_status'] == 'credit') credits += amt;
+    }
+    final expenses = filteredExpenses.fold<double>(0, (s, e) => s + ((e['amount'] as num?)?.toDouble() ?? 0));
+    final netProfit = sales - expenses;
     final profitColor = netProfit >= 0 ? AppColors.success : AppColors.error;
+    final isLoading = billsAsync.isLoading || expensesAsync.isLoading;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -95,10 +88,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             dropdownColor: AppColors.surface,
             style: GoogleFonts.outfit(color: AppColors.textPrimary, fontSize: 13),
             underline: const SizedBox(),
-            onChanged: (v) {
-              setState(() => _timeframe = v!);
-              _loadReport();
-            },
+            onChanged: (v) => setState(() => _timeframe = v!),
             items: const [
               DropdownMenuItem(value: 'Today', child: Text('Today')),
               DropdownMenuItem(value: 'Weekly', child: Text('Weekly')),
@@ -108,7 +98,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           const SizedBox(width: 16),
         ],
       ),
-      body: _loading
+      body: isLoading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
           : SingleChildScrollView(
               padding: const EdgeInsets.all(20),
@@ -119,9 +109,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   const SizedBox(height: 16),
                   Row(
                     children: [
-                      _ReportSummaryCard('Gross Revenue', 'NPR ${fmt.format(_sales)}', Icons.show_chart_rounded, AppColors.success),
+                      _ReportSummaryCard('Gross Revenue', 'NPR ${fmt.format(sales)}', Icons.show_chart_rounded, AppColors.success),
                       const SizedBox(width: 12),
-                      _ReportSummaryCard('Expenses', 'NPR ${fmt.format(_expenses)}', Icons.payment_rounded, AppColors.error),
+                      _ReportSummaryCard('Expenses', 'NPR ${fmt.format(expenses)}', Icons.payment_rounded, AppColors.error),
                       const SizedBox(width: 12),
                       _ReportSummaryCard('Net Profit', 'NPR ${fmt.format(netProfit)}', Icons.account_balance_wallet_rounded, profitColor),
                     ],
@@ -129,13 +119,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   const SizedBox(height: 24),
                   Row(
                     children: [
-                      _ReportSummaryCard('Udhaaro Outstanding', 'NPR ${fmt.format(_credits)}', Icons.assignment_late_rounded, AppColors.warning),
+                      _ReportSummaryCard('Udhaaro Outstanding', 'NPR ${fmt.format(credits)}', Icons.assignment_late_rounded, AppColors.warning),
                       const SizedBox(width: 12),
-                      _ReportSummaryCard('Total Invoices', '$_ordersCount transactions', Icons.description_rounded, AppColors.info),
+                      _ReportSummaryCard('Total Invoices', '${filteredBills.length} transactions', Icons.description_rounded, AppColors.info),
                     ],
                   ),
                   const SizedBox(height: 32),
-                  // Financial Breakdown
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -148,11 +137,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                       children: [
                         Text('Financial Breakdown', style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                         const SizedBox(height: 20),
-                        _BreakdownRow('Sales Revenue', _sales, AppColors.success),
+                        _BreakdownRow('Sales Revenue', sales, AppColors.success),
                         const SizedBox(height: 12),
-                        _BreakdownRow('Total Expenses', _expenses, AppColors.error),
+                        _BreakdownRow('Total Expenses', expenses, AppColors.error),
                         const SizedBox(height: 12),
-                        _BreakdownRow('Outstanding Credits', _credits, AppColors.warning),
+                        _BreakdownRow('Outstanding Credits', credits, AppColors.warning),
                         const Divider(height: 32),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,

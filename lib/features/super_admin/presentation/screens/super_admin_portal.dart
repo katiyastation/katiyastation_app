@@ -1,8 +1,13 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:excel/excel.dart' hide Border, BorderStyle;
+import 'package:uuid/uuid.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
@@ -47,7 +52,7 @@ class _SuperAdminPortalState extends ConsumerState<SuperAdminPortal>
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 2, vsync: this);
+    _tab = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -96,6 +101,7 @@ class _SuperAdminPortalState extends ConsumerState<SuperAdminPortal>
           tabs: const [
             Tab(icon: Icon(Icons.people_rounded, size: 18), text: 'User Accounts'),
             Tab(icon: Icon(Icons.history_rounded, size: 18), text: 'Access Logs'),
+            Tab(icon: Icon(Icons.restaurant_menu_rounded, size: 18), text: 'Menu Import'),
           ],
         ),
         actions: [
@@ -155,6 +161,9 @@ class _SuperAdminPortalState extends ConsumerState<SuperAdminPortal>
 
           // ── Tab 2: Access Logs ───────────────────────────────
           const _AccessLogsTab(),
+
+          // ── Tab 3: Menu Import ───────────────────────────────
+          const _MenuImportTab(),
         ],
       ),
     );
@@ -713,6 +722,418 @@ class _AccessLogsTab extends ConsumerWidget {
           },
         );
       },
+    );
+  }
+}
+
+class _MenuImportTab extends ConsumerStatefulWidget {
+  const _MenuImportTab();
+
+  @override
+  ConsumerState<_MenuImportTab> createState() => _MenuImportTabState();
+}
+
+class _MenuImportTabState extends ConsumerState<_MenuImportTab> {
+  String? _selectedBranchId;
+  String? _fileName;
+  Uint8List? _fileBytes;
+  bool _isLoading = false;
+
+  Future<void> _pickFile() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx', 'xml'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.first;
+      setState(() {
+        _fileName = file.name;
+        _fileBytes = file.bytes;
+      });
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Error picking file: $e'), backgroundColor: AppColors.error),
+      );
+    }
+  }
+
+  Future<void> _startImport() async {
+    final messenger = ScaffoldMessenger.of(context);
+    if (_selectedBranchId == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Please select a branch first.'), backgroundColor: AppColors.warning),
+      );
+      return;
+    }
+    if (_fileBytes == null || _fileName == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Please select an Excel or XML file to import.'), backgroundColor: AppColors.warning),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final supabase = ref.read(supabaseProvider);
+      List<Map<String, dynamic>> importedItems = [];
+
+      final lowerName = _fileName!.toLowerCase();
+      if (lowerName.endsWith('.xlsx')) {
+        importedItems = _parseExcel(_fileBytes!);
+      } else if (lowerName.endsWith('.xml')) {
+        final xmlText = utf8.decode(_fileBytes!);
+        importedItems = _parseXml(xmlText);
+      } else {
+        throw Exception('Unsupported file format. Please upload .xlsx or .xml file.');
+      }
+
+      if (importedItems.isEmpty) {
+        throw Exception('No valid menu items found in the file.');
+      }
+
+      final branchId = _selectedBranchId!;
+      final catRows = await supabase.from(SupabaseConstants.menuCategories).select().eq('branch_id', branchId);
+      final existingCats = {for (var r in catRows) (r['name'] as String).toLowerCase(): r['id'] as String};
+
+      final neededCategories = importedItems.map((item) => item['categoryName'] as String).toSet();
+      final Map<String, String> categoryNameToId = {};
+
+      for (final catName in neededCategories) {
+        final key = catName.toLowerCase();
+        if (existingCats.containsKey(key)) {
+          categoryNameToId[catName] = existingCats[key]!;
+        } else {
+          final newId = const Uuid().v4();
+          final firstItemOfType = importedItems.firstWhere((item) => (item['categoryName'] as String).toLowerCase() == key, orElse: () => {'type': 'food'});
+          final catType = firstItemOfType['type'] ?? 'food';
+
+          await supabase.from(SupabaseConstants.menuCategories).insert({
+            'id': newId,
+            'branch_id': branchId,
+            'name': catName,
+            'type': catType,
+            'is_active': true,
+          });
+          existingCats[key] = newId;
+          categoryNameToId[catName] = newId;
+        }
+      }
+
+      final List<Map<String, dynamic>> itemsToInsert = importedItems.map((item) {
+        return {
+          'id': const Uuid().v4(),
+          'branch_id': branchId,
+          'category_id': categoryNameToId[item['categoryName']],
+          'name': item['name'],
+          'price': item['price'],
+          'description': item['description'],
+          'image_url': item['image_url'],
+          'type': item['type'],
+          'is_available': item['is_available'] ?? true,
+        };
+      }).toList();
+
+      await supabase.from(SupabaseConstants.menuItems).insert(itemsToInsert);
+
+      setState(() {
+        _fileName = null;
+        _fileBytes = null;
+      });
+
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('✓ Successfully imported ${itemsToInsert.length} items across ${neededCategories.length} categories!'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Import failed: $e'), backgroundColor: AppColors.error),
+      );
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  List<Map<String, dynamic>> _parseExcel(Uint8List fileBytes) {
+    final excel = Excel.decodeBytes(fileBytes);
+    final items = <Map<String, dynamic>>[];
+    
+    String getVal(dynamic cell) {
+      if (cell == null) return '';
+      final v = cell.value;
+      if (v == null) return '';
+      return v.toString().trim();
+    }
+
+    for (final table in excel.tables.keys) {
+      final sheet = excel.tables[table];
+      if (sheet == null) continue;
+      if (sheet.maxRows <= 1) continue;
+
+      final headers = sheet.rows.first.map((c) => getVal(c).toLowerCase()).toList();
+      final catIdx = headers.indexOf('category');
+      final nameIdx = headers.indexOf('name');
+      final priceIdx = headers.indexOf('price');
+      final descIdx = headers.indexOf('description');
+      final imgIdx = headers.indexOf('image url');
+      final typeIdx = headers.indexOf('type');
+
+      if (nameIdx == -1 || priceIdx == -1 || catIdx == -1) {
+        throw Exception('Excel sheet "$table" must contain "Category", "Name", and "Price" columns.');
+      }
+
+      for (int i = 1; i < sheet.maxRows; i++) {
+        final row = sheet.rows[i];
+        if (row.isEmpty) continue;
+        final name = nameIdx < row.length ? getVal(row[nameIdx]) : '';
+        final priceStr = priceIdx < row.length ? getVal(row[priceIdx]) : '';
+        final category = catIdx < row.length ? getVal(row[catIdx]) : '';
+
+        if (name.isEmpty || priceStr.isEmpty || category.isEmpty) continue;
+
+        final price = double.tryParse(priceStr) ?? 0.0;
+        final desc = descIdx != -1 && descIdx < row.length ? getVal(row[descIdx]) : '';
+        final imgUrl = imgIdx != -1 && imgIdx < row.length ? getVal(row[imgIdx]) : '';
+        final type = typeIdx != -1 && typeIdx < row.length ? getVal(row[typeIdx]).toLowerCase() : 'food';
+
+        items.add({
+          'categoryName': category,
+          'name': name,
+          'price': price,
+          'description': desc.isEmpty ? null : desc,
+          'image_url': imgUrl.isEmpty ? null : imgUrl,
+          'type': ['food', 'drink', 'bar'].contains(type) ? type : 'food',
+          'is_available': true,
+        });
+      }
+    }
+    return items;
+  }
+
+  List<Map<String, dynamic>> _parseXml(String xmlText) {
+    final items = <Map<String, dynamic>>[];
+    final itemRegex = RegExp(r'<item>([\s\S]*?)<\/item>', caseSensitive: false);
+    final matches = itemRegex.allMatches(xmlText);
+    
+    for (final match in matches) {
+      final itemContent = match.group(1) ?? '';
+      
+      String extractTag(String tag) {
+        final tagRegex = RegExp('<$tag>([\\s\\S]*?)<\\/$tag>', caseSensitive: false);
+        return tagRegex.firstMatch(itemContent)?.group(1)?.trim() ?? '';
+      }
+      
+      final category = extractTag('category');
+      final name = extractTag('name');
+      final priceStr = extractTag('price');
+      final description = extractTag('description');
+      
+      var imageUrl = extractTag('imageUrl');
+      if (imageUrl.isEmpty) {
+        imageUrl = extractTag('image_url');
+      }
+      
+      var isAvailableStr = extractTag('isAvailable');
+      if (isAvailableStr.isEmpty) {
+        isAvailableStr = extractTag('is_available');
+      }
+      
+      final type = extractTag('type').toLowerCase();
+
+      if (name.isNotEmpty && priceStr.isNotEmpty && category.isNotEmpty) {
+        final price = double.tryParse(priceStr) ?? 0.0;
+        items.add({
+          'categoryName': category,
+          'name': name,
+          'price': price,
+          'description': description.isEmpty ? null : description,
+          'image_url': imageUrl.isEmpty ? null : imageUrl,
+          'type': ['food', 'drink', 'bar'].contains(type) ? type : 'food',
+          'is_available': isAvailableStr.toLowerCase() != 'false',
+        });
+      }
+    }
+    return items;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final branchesAsync = ref.watch(allBranchesProvider);
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Center(
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 550),
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.border),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.03),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                )
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.upload_file_rounded, color: AppColors.primary, size: 24),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Bulk Import Menu',
+                            style: GoogleFonts.outfit(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          Text(
+                            'Import categories and items from Excel (.xlsx) or XML (.xml)',
+                            style: GoogleFonts.outfit(
+                              fontSize: 11,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 32),
+                
+                Text(
+                  'Select Target Branch',
+                  style: GoogleFonts.outfit(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                branchesAsync.when(
+                  loading: () => const LinearProgressIndicator(color: AppColors.primary),
+                  error: (e, _) => Text('Error loading branches: $e', style: const TextStyle(color: AppColors.error)),
+                  data: (branches) => DropdownButtonFormField<String>(
+                    initialValue: _selectedBranchId,
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.store_outlined, size: 20),
+                      hintText: 'Choose branch to import menu into',
+                    ),
+                    items: branches.map((b) => DropdownMenuItem<String>(
+                      value: b['id'] as String,
+                      child: Text(b['name'] as String),
+                    )).toList(),
+                    onChanged: (v) => setState(() => _selectedBranchId = v),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                Text(
+                  'Upload Menu File',
+                  style: GoogleFonts.outfit(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: _pickFile,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: AppColors.background.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _fileName != null ? AppColors.success : AppColors.border,
+                        style: BorderStyle.solid,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(
+                          _fileName != null 
+                            ? (_fileName!.endsWith('.xlsx') ? Icons.table_view_rounded : Icons.code_rounded)
+                            : Icons.cloud_upload_outlined,
+                          color: _fileName != null ? AppColors.success : AppColors.textHint,
+                          size: 40,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          _fileName ?? 'Click to select file',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.outfit(
+                            fontSize: 13,
+                            fontWeight: _fileName != null ? FontWeight.w600 : FontWeight.w400,
+                            color: _fileName != null ? AppColors.textPrimary : AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _fileName != null ? 'File loaded successfully' : 'Supports Excel (.xlsx) & XML (.xml)',
+                          style: GoogleFonts.outfit(
+                            fontSize: 10,
+                            color: AppColors.textHint,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 32),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: _isLoading ? null : _startImport,
+                    child: _isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        )
+                      : Text(
+                          'Start Import Process',
+                          style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+                        ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -8,6 +8,19 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
+// Real-time purchases stream
+final purchasesProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
+  final supabase = ref.watch(supabaseProvider);
+  final profile = ref.watch(authNotifierProvider).value;
+  if (profile == null) return const Stream.empty();
+  return supabase
+      .from(SupabaseConstants.purchases)
+      .stream(primaryKey: ['id'])
+      .eq('branch_id', profile.branchId ?? '')
+      .order('created_at', ascending: false)
+      .map((rows) => List<Map<String, dynamic>>.from(rows));
+});
+
 class PurchaseScreen extends ConsumerStatefulWidget {
   const PurchaseScreen({super.key});
   @override
@@ -16,23 +29,12 @@ class PurchaseScreen extends ConsumerStatefulWidget {
 
 class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
   final fmt = NumberFormat('#,##0.00');
-  List<Map<String, dynamic>> _purchases = [];
-  bool _loading = true;
-
-  @override
-  void initState() { super.initState(); _load(); }
-
-  Future<void> _load() async {
-    final profile = ref.read(authNotifierProvider).value;
-    if (profile == null) return;
-    final data = await ref.read(supabaseProvider).from(SupabaseConstants.purchases)
-        .select().eq('branch_id', profile.branchId ?? '').order('created_at', ascending: false);
-    if (mounted) setState(() { _purchases = List<Map<String, dynamic>>.from(data); _loading = false; });
-  }
 
   @override
   Widget build(BuildContext context) {
-    final totalSpend = _purchases.fold<double>(0, (s, p) => s + ((p['total_amount'] as num?)?.toDouble() ?? 0));
+    final purchasesAsync = ref.watch(purchasesProvider);
+    final purchases = purchasesAsync.value ?? [];
+    final totalSpend = purchases.fold<double>(0, (s, p) => s + ((p['total_amount'] as num?)?.toDouble() ?? 0));
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -47,15 +49,16 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
           Container(
             color: AppColors.surface, padding: const EdgeInsets.all(16),
             child: Row(children: [
-              _SC('Total Purchases', '${_purchases.length}', AppColors.info),
+              _SC('Total Purchases', '${purchases.length}', AppColors.info),
               const SizedBox(width: 12),
               _SC('Total Spent', 'NPR ${fmt.format(totalSpend)}', AppColors.error),
             ]),
           ),
           const Divider(height: 1),
-          Expanded(child: _loading
-            ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-            : _purchases.isEmpty
+          Expanded(child: purchasesAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+            error: (e, _) => Center(child: Text('Error: $e', style: const TextStyle(color: AppColors.error))),
+            data: (_) => purchases.isEmpty
               ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                   const Icon(Icons.shopping_cart_outlined, size: 64, color: AppColors.textHint),
                   const SizedBox(height: 16),
@@ -65,9 +68,9 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
                 ]))
               : ListView.builder(
                   padding: const EdgeInsets.all(16),
-                  itemCount: _purchases.length,
+                  itemCount: purchases.length,
                   itemBuilder: (ctx, i) {
-                    final p = _purchases[i];
+                    final p = purchases[i];
                     return Container(
                       margin: const EdgeInsets.only(bottom: 10),
                       padding: const EdgeInsets.all(14),
@@ -91,7 +94,8 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
                       ]),
                     ).animate().fadeIn(delay: Duration(milliseconds: i * 25));
                   },
-                )),
+                ),
+          )),
         ],
       ),
     );
@@ -123,7 +127,7 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
             'status': 'received',
             'created_at': DateTime.now().toIso8601String(),
           });
-          if (context.mounted) { Navigator.pop(ctx); _load(); }
+          if (context.mounted) Navigator.pop(ctx);
         }, child: const Text('Save')),
       ],
     ));

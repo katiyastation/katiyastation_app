@@ -9,6 +9,8 @@ import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../menu/domain/entities/menu_entities.dart';
 import '../widgets/recipe_dialog.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:excel/excel.dart' hide Border;
 
 // All categories stream
 final menuCategoriesStreamProvider = StreamProvider<List<MenuCategory>>((ref) {
@@ -52,6 +54,12 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
       appBar: AppBar(
         title: const Text('Menu Management'),
         actions: [
+          TextButton.icon(
+            icon: const Icon(Icons.file_upload_outlined, size: 18),
+            label: const Text('Bulk Import (Excel)'),
+            onPressed: () => _importBulkExcel(context),
+          ),
+          const SizedBox(width: 8),
           TextButton.icon(
             icon: const Icon(Icons.add_rounded, size: 18),
             label: const Text('Add Category'),
@@ -216,7 +224,7 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
   Future<void> _showItemDialog(BuildContext context, [MenuItem? existing]) async {
     final nameCtrl = TextEditingController(text: existing?.name ?? '');
     final priceCtrl = TextEditingController(text: existing?.price.toString() ?? '');
-    final costCtrl = TextEditingController(text: existing?.costPrice?.toString() ?? '');
+    final imageUrlCtrl = TextEditingController(text: existing?.imageUrl ?? '');
     final descCtrl = TextEditingController(text: existing?.description ?? '');
 
     await showDialog(
@@ -229,7 +237,7 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
             const SizedBox(height: 12),
             TextField(controller: priceCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Selling Price (NPR) *')),
             const SizedBox(height: 12),
-            TextField(controller: costCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Cost Price (NPR)')),
+            TextField(controller: imageUrlCtrl, decoration: const InputDecoration(labelText: 'Image URL (paste image link)', prefixIcon: Icon(Icons.image_outlined, size: 18))),
             const SizedBox(height: 12),
             TextField(controller: descCtrl, decoration: const InputDecoration(labelText: 'Description'), maxLines: 2),
           ]),
@@ -250,7 +258,7 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
                   'category_id': _selectedCatId,
                   'name': nameCtrl.text.trim(),
                   'price': double.tryParse(priceCtrl.text) ?? 0,
-                  'cost_price': double.tryParse(costCtrl.text),
+                  'image_url': imageUrlCtrl.text.trim().isEmpty ? null : imageUrlCtrl.text.trim(),
                   'description': descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
                   'is_available': true,
                 };
@@ -274,6 +282,175 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _importBulkExcel(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+
+      final fileBytes = result.files.first.bytes;
+      if (fileBytes == null) {
+        throw Exception('Failed to read file bytes. Make sure the file is not empty.');
+      }
+
+      if (!context.mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: AppColors.primary),
+                  SizedBox(height: 16),
+                  Text('Importing menu items... Please wait.'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final profile = ref.read(authNotifierProvider).value;
+      final branchId = profile?.branchId;
+      if (branchId == null) {
+        throw Exception('Branch ID not found in user profile.');
+      }
+
+      final supabase = ref.read(supabaseProvider);
+
+      final excel = Excel.decodeBytes(fileBytes);
+      final importedItems = <Map<String, dynamic>>[];
+      
+      String getVal(dynamic cell) {
+        if (cell == null) return '';
+        final v = cell.value;
+        if (v == null) return '';
+        return v.toString().trim();
+      }
+
+      for (final table in excel.tables.keys) {
+        final sheet = excel.tables[table];
+        if (sheet == null) continue;
+        if (sheet.maxRows <= 1) continue;
+
+        final headers = sheet.rows.first.map((c) => getVal(c).toLowerCase()).toList();
+        final catIdx = headers.indexOf('category');
+        final nameIdx = headers.indexOf('name');
+        final priceIdx = headers.indexOf('price');
+        final descIdx = headers.indexOf('description');
+        final imgIdx = headers.indexOf('image url');
+        final typeIdx = headers.indexOf('type');
+
+        if (nameIdx == -1 || priceIdx == -1 || catIdx == -1) {
+          throw Exception('Excel sheet "$table" must contain "Category", "Name", and "Price" columns.');
+        }
+
+        for (int i = 1; i < sheet.maxRows; i++) {
+          final row = sheet.rows[i];
+          if (row.isEmpty) continue;
+          final name = nameIdx < row.length ? getVal(row[nameIdx]) : '';
+          final priceStr = priceIdx < row.length ? getVal(row[priceIdx]) : '';
+          final category = catIdx < row.length ? getVal(row[catIdx]) : '';
+
+          if (name.isEmpty || priceStr.isEmpty || category.isEmpty) continue;
+
+          final price = double.tryParse(priceStr) ?? 0.0;
+          final desc = descIdx != -1 && descIdx < row.length ? getVal(row[descIdx]) : '';
+          final imgUrl = imgIdx != -1 && imgIdx < row.length ? getVal(row[imgIdx]) : '';
+          final type = typeIdx != -1 && typeIdx < row.length ? getVal(row[typeIdx]).toLowerCase() : 'food';
+
+          importedItems.add({
+            'categoryName': category,
+            'name': name,
+            'price': price,
+            'description': desc.isEmpty ? null : desc,
+            'image_url': imgUrl.isEmpty ? null : imgUrl,
+            'type': ['food', 'drink', 'bar'].contains(type) ? type : 'food',
+          });
+        }
+      }
+
+      if (importedItems.isEmpty) {
+        throw Exception('No valid items found in the Excel file.');
+      }
+
+      final catRows = await supabase.from(SupabaseConstants.menuCategories).select().eq('branch_id', branchId);
+      final existingCats = {for (var r in catRows) (r['name'] as String).toLowerCase(): r['id'] as String};
+
+      final neededCategories = importedItems.map((item) => item['categoryName'] as String).toSet();
+      final Map<String, String> categoryNameToId = {};
+
+      for (final catName in neededCategories) {
+        final key = catName.toLowerCase();
+        if (existingCats.containsKey(key)) {
+          categoryNameToId[catName] = existingCats[key]!;
+        } else {
+          final newId = const Uuid().v4();
+          final firstItemOfType = importedItems.firstWhere((item) => (item['categoryName'] as String).toLowerCase() == key, orElse: () => {'type': 'food'});
+          final catType = firstItemOfType['type'] ?? 'food';
+
+          await supabase.from(SupabaseConstants.menuCategories).insert({
+            'id': newId,
+            'branch_id': branchId,
+            'name': catName,
+            'type': catType,
+            'is_active': true,
+          });
+          existingCats[key] = newId;
+          categoryNameToId[catName] = newId;
+        }
+      }
+
+      final List<Map<String, dynamic>> itemsToInsert = importedItems.map((item) {
+        return {
+          'id': const Uuid().v4(),
+          'branch_id': branchId,
+          'category_id': categoryNameToId[item['categoryName']],
+          'name': item['name'],
+          'price': item['price'],
+          'description': item['description'],
+          'image_url': item['image_url'],
+          'type': item['type'],
+          'is_available': true,
+        };
+      }).toList();
+
+      await supabase.from(SupabaseConstants.menuItems).insert(itemsToInsert);
+
+      if (context.mounted) Navigator.pop(context);
+
+      ref.invalidate(menuCategoriesStreamProvider);
+      if (_selectedCatId != null) {
+        ref.invalidate(menuItemsByCatProvider(_selectedCatId!));
+      }
+
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('✓ Imported ${itemsToInsert.length} items across ${neededCategories.length} categories!'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst || route.settings.name != null);
+      }
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Failed to import: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
   }
 
   Future<void> _deleteCategory(String id) async {
@@ -365,14 +542,17 @@ class _MenuItemCard extends StatelessWidget {
         children: [
           Stack(
             children: [
-              Container(
-                height: 72,
-                decoration: const BoxDecoration(
-                  color: AppColors.surfaceVariant,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(11)),
-                ),
-                alignment: Alignment.center,
-                child: const Icon(Icons.restaurant_rounded, color: AppColors.textHint, size: 32),
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
+                child: item.imageUrl != null && item.imageUrl!.isNotEmpty
+                    ? Image.network(
+                        item.imageUrl!,
+                        height: 72,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _placeholder(),
+                      )
+                    : _placeholder(),
               ),
               Positioned(
                 top: 4,
@@ -431,6 +611,15 @@ class _MenuItemCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _placeholder() {
+    return Container(
+      height: 72,
+      width: double.infinity,
+      color: AppColors.primary.withValues(alpha: 0.05),
+      child: const Icon(Icons.restaurant_menu_rounded, color: AppColors.primary, size: 24),
     );
   }
 }

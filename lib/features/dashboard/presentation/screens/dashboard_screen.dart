@@ -8,6 +8,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../tables/presentation/providers/tables_provider.dart';
 
 // ── Real-time dashboard stat providers ──
 final _dashboardBillsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
@@ -114,7 +115,15 @@ class DashboardScreen extends ConsumerWidget {
                       ]
                       // Cashier dashboard
                       else if (profile.isCashier) ...[
-                        const _SectionHeader('Cashier Station'),
+                        const _SectionHeader('Overview'),
+                        const SizedBox(height: 16),
+                        const _CashierStatsGrid(),
+                        const SizedBox(height: 24),
+                        const _SectionHeader('Live Tables & Bill Requests'),
+                        const SizedBox(height: 16),
+                        const _CashierLiveTablesGrid(),
+                        const SizedBox(height: 24),
+                        const _SectionHeader('Quick Actions'),
                         const SizedBox(height: 16),
                         _QuickActionsGrid(role: profile.role),
                       ]
@@ -404,6 +413,211 @@ class _KitchenQuickNav extends StatelessWidget {
       style: ElevatedButton.styleFrom(
         minimumSize: const Size(double.infinity, 52),
       ),
+    );
+  }
+}
+
+// ── Cashier Real-time Overview Widgets ──
+
+final _dashboardSessionsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
+  final supabase = ref.watch(supabaseProvider);
+  final profile = ref.watch(authNotifierProvider).value;
+  if (profile?.branchId == null) return const Stream.empty();
+  return supabase
+      .from(SupabaseConstants.tableSessions)
+      .stream(primaryKey: ['id'])
+      .eq('branch_id', profile!.branchId!)
+      .map((rows) => List<Map<String, dynamic>>.from(rows)
+          .where((s) => s['status'] == 'open')
+          .toList());
+});
+
+class _CashierStatsGrid extends ConsumerWidget {
+  const _CashierStatsGrid();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final billsAsync = ref.watch(_dashboardBillsProvider);
+    final tablesAsync = ref.watch(tablesStreamProvider);
+    
+    final fmt = NumberFormat('#,##0.00');
+    double todaySales = 0;
+    int occupiedTables = 0;
+    int billRequests = 0;
+
+    billsAsync.whenData((bills) {
+      todaySales = bills
+          .where((b) => b['payment_status'] == 'paid')
+          .fold(0.0, (s, b) => s + ((b['total_amount'] as num?)?.toDouble() ?? 0));
+    });
+
+    tablesAsync.whenData((tables) {
+      occupiedTables = tables.where((t) => t.isOccupied).length;
+      billRequests = tables.where((t) => t.billRequested).length;
+    });
+
+    final isLoading = billsAsync.isLoading || tablesAsync.isLoading;
+
+    return AnimatedOpacity(
+      opacity: isLoading ? 0.5 : 1.0,
+      duration: const Duration(milliseconds: 300),
+      child: GridView.count(
+        crossAxisCount: 3,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 2.2,
+        children: [
+          _StatCard('Today\'s Sales', 'NPR ${fmt.format(todaySales)}', Icons.point_of_sale_rounded, AppColors.success),
+          _StatCard('Active Tables', occupiedTables.toString(), Icons.table_restaurant_rounded, AppColors.info),
+          _StatCard(
+            'Bill Requests', 
+            billRequests.toString(), 
+            Icons.receipt_long_rounded, 
+            billRequests > 0 ? AppColors.warning : AppColors.textHint,
+          ),
+        ].animate(interval: 80.ms).fadeIn().slideY(begin: 0.2),
+      ),
+    );
+  }
+}
+
+class _CashierLiveTablesGrid extends ConsumerWidget {
+  const _CashierLiveTablesGrid();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tablesAsync = ref.watch(tablesStreamProvider);
+    final sessionsAsync = ref.watch(_dashboardSessionsProvider);
+    final fmt = NumberFormat('#,##0');
+
+    return tablesAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      error: (e, _) => Text('Error: $e', style: const TextStyle(color: AppColors.error)),
+      data: (tables) {
+        final occupied = tables.where((t) => t.isOccupied).toList();
+        if (occupied.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.symmetric(vertical: 40),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              children: [
+                const Icon(Icons.table_restaurant_outlined, size: 48, color: AppColors.textHint),
+                const SizedBox(height: 12),
+                Text('No active tables at the moment',
+                    style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 14)),
+              ],
+            ),
+          );
+        }
+
+        return sessionsAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Text('Error loading sessions: $e'),
+          data: (sessions) {
+            return GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 220,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 1.15,
+              ),
+              itemCount: occupied.length,
+              itemBuilder: (ctx, i) {
+                final table = occupied[i];
+                final session = sessions.where((s) => s['id'] == table.currentSessionId).firstOrNull;
+                final subtotal = (session?['total_amount'] as num?)?.toDouble() ?? 0.0;
+                final isBillRequested = table.billRequested;
+
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.card,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: isBillRequested ? AppColors.warning : AppColors.border,
+                      width: isBillRequested ? 2.0 : 1.0,
+                    ),
+                    boxShadow: isBillRequested
+                        ? [
+                            BoxShadow(
+                              color: AppColors.warning.withValues(alpha: 0.2),
+                              blurRadius: 8,
+                              spreadRadius: 1,
+                            )
+                          ]
+                        : null,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Table ${table.tableNumber}',
+                              style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                          if (isBillRequested)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppColors.warning.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text('BILL REQ',
+                                  style: GoogleFonts.outfit(
+                                      fontSize: 9, color: AppColors.warning, fontWeight: FontWeight.w700)),
+                            ).animate(onPlay: (c) => c.repeat(reverse: true)).fade(duration: 600.ms)
+                          else
+                            Container(
+                              width: 8, height: 8,
+                              decoration: const BoxDecoration(color: AppColors.tableOccupied, shape: BoxShape.circle),
+                            ),
+                        ],
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Subtotal:', style: GoogleFonts.outfit(fontSize: 11, color: AppColors.textSecondary)),
+                          Text('NPR ${fmt.format(subtotal)}',
+                              style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.primary)),
+                        ],
+                      ),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 32,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: isBillRequested ? AppColors.warning : AppColors.primary,
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          onPressed: () {
+                            context.go('/cashier?sessionId=${table.currentSessionId ?? ''}&tableId=${table.id}');
+                          },
+                          child: Text(
+                            isBillRequested ? 'PRINT & SETTLE' : 'BILL / SETTLE',
+                            style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 }

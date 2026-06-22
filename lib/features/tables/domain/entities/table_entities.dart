@@ -8,6 +8,8 @@ class RestaurantTable extends Equatable {
   final int capacity;
   final String status;
   final String? currentSessionId;
+  final bool billRequested;
+  final DateTime? billRequestedAt;
 
   const RestaurantTable({
     required this.id,
@@ -17,6 +19,8 @@ class RestaurantTable extends Equatable {
     required this.capacity,
     required this.status,
     this.currentSessionId,
+    this.billRequested = false,
+    this.billRequestedAt,
   });
 
   factory RestaurantTable.fromJson(Map<String, dynamic> json) {
@@ -28,6 +32,10 @@ class RestaurantTable extends Equatable {
       capacity: json['capacity'] as int? ?? 4,
       status: json['status'] as String? ?? 'available',
       currentSessionId: json['current_session_id'] as String?,
+      billRequested: json['bill_requested'] as bool? ?? false,
+      billRequestedAt: json['bill_requested_at'] != null
+          ? DateTime.parse(json['bill_requested_at'] as String)
+          : null,
     );
   }
 
@@ -37,6 +45,8 @@ class RestaurantTable extends Equatable {
         'section': section,
         'capacity': capacity,
         'status': status,
+        'bill_requested': billRequested,
+        'bill_requested_at': billRequestedAt?.toIso8601String(),
       };
 
   bool get isAvailable => status == 'available';
@@ -45,7 +55,15 @@ class RestaurantTable extends Equatable {
   bool get isCleaning => status == 'cleaning';
 
   @override
-  List<Object?> get props => [id, tableNumber, status, section, currentSessionId];
+  List<Object?> get props => [
+        id,
+        tableNumber,
+        status,
+        section,
+        currentSessionId,
+        billRequested,
+        billRequestedAt,
+      ];
 }
 
 class TableSession extends Equatable {
@@ -60,6 +78,8 @@ class TableSession extends Equatable {
   final double totalAmount;
   final DateTime openedAt;
   final DateTime? closedAt;
+  final bool billRequested;
+  final DateTime? billRequestedAt;
 
   const TableSession({
     required this.id,
@@ -73,6 +93,8 @@ class TableSession extends Equatable {
     this.totalAmount = 0,
     required this.openedAt,
     this.closedAt,
+    this.billRequested = false,
+    this.billRequestedAt,
   });
 
   factory TableSession.fromJson(Map<String, dynamic> json) {
@@ -90,6 +112,10 @@ class TableSession extends Equatable {
       closedAt: json['closed_at'] != null
           ? DateTime.parse(json['closed_at'] as String)
           : null,
+      billRequested: json['bill_requested'] as bool? ?? false,
+      billRequestedAt: json['bill_requested_at'] != null
+          ? DateTime.parse(json['bill_requested_at'] as String)
+          : null,
     );
   }
 
@@ -98,5 +124,13 @@ class TableSession extends Equatable {
   bool get isBilled => status == 'billed';
 
   @override
-  List<Object?> get props => [id, tableId, sessionNumber, status, totalAmount];
+  List<Object?> get props => [
+        id,
+        tableId,
+        sessionNumber,
+        status,
+        totalAmount,
+        billRequested,
+        billRequestedAt,
+      ];
 }

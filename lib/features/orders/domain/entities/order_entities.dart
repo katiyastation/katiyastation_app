@@ -65,6 +65,7 @@ class KotItem extends Equatable {
   final String menuItemId;
   final String menuItemName;
   final int quantity;
+  final double unitPrice;
   final String? notes;
 
   const KotItem({
@@ -73,6 +74,7 @@ class KotItem extends Equatable {
     required this.menuItemId,
     required this.menuItemName,
     required this.quantity,
+    this.unitPrice = 0.0,
     this.notes,
   });
 
@@ -83,10 +85,11 @@ class KotItem extends Equatable {
       menuItemId: json['menu_item_id'] as String,
       menuItemName: json['name'] as String? ?? json['menu_item_name'] as String? ?? json['menu_item']?['name'] ?? '',
       quantity: json['quantity'] as int,
+      unitPrice: (json['unit_price'] as num?)?.toDouble() ?? 0.0,
       notes: json['note'] as String? ?? json['notes'] as String?,
     );
   }
 
   @override
-  List<Object?> get props => [id, kotId, menuItemId, quantity];
+  List<Object?> get props => [id, kotId, menuItemId, quantity, unitPrice];
 }
