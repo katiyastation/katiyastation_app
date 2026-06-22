@@ -8,7 +8,8 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
-// ── Providers ──────────────────────────────────────────────────
+// allUsersProvider uses an RPC call (get_all_users) — kept as FutureProvider
+// since custom RPCs don't support Supabase real-time streams directly.
 final allUsersProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final supabase = ref.watch(supabaseProvider);
   final List<dynamic> data = await supabase.rpc('get_all_users');
@@ -21,10 +22,14 @@ final allUsersProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async 
   return list;
 });
 
-final allBranchesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+// Branches for dropdowns — real-time stream
+final allBranchesProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
   final supabase = ref.watch(supabaseProvider);
-  final data = await supabase.from(SupabaseConstants.branches).select('id, name').order('name');
-  return List<Map<String, dynamic>>.from(data);
+  return supabase
+      .from(SupabaseConstants.branches)
+      .stream(primaryKey: ['id'])
+      .order('name')
+      .map((rows) => List<Map<String, dynamic>>.from(rows));
 });
 
 // ── Super Admin Portal ─────────────────────────────────────────
@@ -611,24 +616,32 @@ class _UserCard extends StatelessWidget {
   }
 }
 
-// ── Access Logs Tab ────────────────────────────────────────────
+// ── Access Logs Tab (real-time stream) ────────────────────────────────────────
+final _accessLogsStreamProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
+  final supabase = ref.watch(supabaseProvider);
+  return supabase
+      .from('user_access_logs')
+      .stream(primaryKey: ['id'])
+      .order('created_at')
+      .map((rows) {
+        final list = List<Map<String, dynamic>>.from(rows);
+        list.sort((a, b) =>
+            (b['created_at'] as String).compareTo(a['created_at'] as String));
+        return list.take(100).toList();
+      });
+});
+
 class _AccessLogsTab extends ConsumerWidget {
   const _AccessLogsTab();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final supabase = ref.watch(supabaseProvider);
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: supabase
-          .from('user_access_logs')
-          .select('*, performed:user_profiles!performed_by(full_name), target:user_profiles!target_user(full_name)')
-          .order('created_at', ascending: false)
-          .limit(100),
-      builder: (ctx, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-        }
-        final logs = snap.data ?? [];
+    final logsAsync = ref.watch(_accessLogsStreamProvider);
+    return logsAsync.when(
+      loading: () =>
+          const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      error: (e, _) => Center(child: Text('Error: $e')),
+      data: (logs) {
         if (logs.isEmpty) {
           return Center(
             child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [

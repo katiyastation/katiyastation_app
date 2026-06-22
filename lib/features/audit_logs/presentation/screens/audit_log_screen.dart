@@ -7,17 +7,22 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
-final auditLogsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final auditLogsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
   final supabase = ref.watch(supabaseProvider);
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile == null) return [];
-  final data = await supabase
+  if (profile == null) return const Stream.empty();
+  return supabase
       .from(SupabaseConstants.auditLogs)
-      .select()
+      .stream(primaryKey: ['id'])
       .eq('branch_id', profile.branchId ?? '')
-      .order('created_at', ascending: false)
-      .limit(100);
-  return List<Map<String, dynamic>>.from(data);
+      .order('created_at')
+      .map((rows) {
+        final list = List<Map<String, dynamic>>.from(rows);
+        // Sort descending by created_at since .stream() doesn't support descending order
+        list.sort((a, b) =>
+            (b['created_at'] as String).compareTo(a['created_at'] as String));
+        return list.take(100).toList();
+      });
 });
 
 class AuditLogScreen extends ConsumerStatefulWidget {
@@ -51,6 +56,7 @@ class _AuditLogScreenState extends ConsumerState<AuditLogScreen> {
       appBar: AppBar(
         title: const Text('Audit Logs'),
         actions: [
+          // Refresh button kept as a visual cue; stream auto-updates
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             onPressed: () => ref.invalidate(auditLogsProvider),

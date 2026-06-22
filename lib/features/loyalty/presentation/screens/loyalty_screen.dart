@@ -8,28 +8,36 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
-final loyaltyCustomersProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final loyaltyCustomersProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
   final supabase = ref.watch(supabaseProvider);
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile == null) return [];
-  final data = await supabase
+  if (profile == null) return const Stream.empty();
+  return supabase
       .from(SupabaseConstants.customers)
-      .select('id, name, phone, loyalty_points')
+      .stream(primaryKey: ['id'])
       .eq('branch_id', profile.branchId ?? '')
-      .order('loyalty_points', ascending: false);
-  return List<Map<String, dynamic>>.from(data);
+      .map((rows) {
+        final list = List<Map<String, dynamic>>.from(rows);
+        list.sort((a, b) => ((b['loyalty_points'] as num?) ?? 0)
+            .compareTo((a['loyalty_points'] as num?) ?? 0));
+        return list;
+      });
 });
 
 final loyaltyHistoryProvider =
-    FutureProvider.family<List<Map<String, dynamic>>, String>((ref, customerId) async {
+    StreamProvider.family<List<Map<String, dynamic>>, String>((ref, customerId) {
   final supabase = ref.watch(supabaseProvider);
-  final data = await supabase
+  return supabase
       .from(SupabaseConstants.loyaltyTransactions)
-      .select()
+      .stream(primaryKey: ['id'])
       .eq('customer_id', customerId)
-      .order('created_at', ascending: false)
-      .limit(30);
-  return List<Map<String, dynamic>>.from(data);
+      .order('created_at')
+      .map((rows) {
+        final list = List<Map<String, dynamic>>.from(rows);
+        list.sort((a, b) =>
+            (b['created_at'] as String).compareTo(a['created_at'] as String));
+        return list.take(30).toList();
+      });
 });
 
 class LoyaltyScreen extends ConsumerStatefulWidget {
@@ -217,7 +225,7 @@ class _LoyaltyScreenState extends ConsumerState<LoyaltyScreen>
                     backgroundColor: AppColors.success,
                   ),
                 );
-                ref.invalidate(loyaltyCustomersProvider);
+                // Stream auto-updates; no need to invalidate
               }
             },
             child: const Text('Award Points'),
@@ -299,7 +307,7 @@ class _LoyaltyScreenState extends ConsumerState<LoyaltyScreen>
                     backgroundColor: AppColors.success,
                   ),
                 );
-                ref.invalidate(loyaltyCustomersProvider);
+                // Stream auto-updates; no need to invalidate
               }
             },
             child: const Text('Redeem'),
@@ -640,28 +648,32 @@ class _CustomerHistorySheet extends ConsumerWidget {
   }
 }
 
-// ── Recent Transactions Tab ──
+// ── Recent Transactions Tab (real-time) ──
+final _recentLoyaltyTxnsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
+  final supabase = ref.watch(supabaseProvider);
+  final profile = ref.watch(authNotifierProvider).value;
+  if (profile?.branchId == null) return const Stream.empty();
+  return supabase
+      .from(SupabaseConstants.loyaltyTransactions)
+      .stream(primaryKey: ['id'])
+      .eq('branch_id', profile!.branchId!)
+      .order('created_at')
+      .map((rows) {
+        final list = List<Map<String, dynamic>>.from(rows);
+        list.sort((a, b) =>
+            (b['created_at'] as String).compareTo(a['created_at'] as String));
+        return list.take(50).toList();
+      });
+});
+
 class _RecentTransactionsTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final supabase = ref.watch(supabaseProvider);
-    final profile = ref.watch(authNotifierProvider).value;
-
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: supabase
-          .from(SupabaseConstants.loyaltyTransactions)
-          .select('*, customers(name, phone)')
-          .eq('branch_id', profile?.branchId ?? '')
-          .order('created_at', ascending: false)
-          .limit(50),
-      builder: (ctx, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-        final txns = snapshot.data ?? [];
+    final txnsAsync = ref.watch(_recentLoyaltyTxnsProvider);
+    return txnsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      error: (e, _) => Center(child: Text('Error: $e')),
+      data: (txns) {
         if (txns.isEmpty) {
           return Center(
             child: Column(
@@ -682,8 +694,11 @@ class _RecentTransactionsTab extends ConsumerWidget {
             final t = txns[i];
             final isEarn = t['type'] == 'earn';
             final pts = (t['points'] as num?)?.toInt() ?? 0;
+            // customer name from joined data or fallback
             final customerName =
-                (t['customers'] as Map<String, dynamic>?)?['name'] as String? ?? '—';
+                (t['customers'] as Map<String, dynamic>?)?['name'] as String?
+                ?? t['customer_name'] as String?
+                ?? '—';
             return Container(
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(12),

@@ -4,11 +4,61 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+
+// ── Real-time dashboard stat providers ──
+final _dashboardBillsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
+  final supabase = ref.watch(supabaseProvider);
+  final profile = ref.watch(authNotifierProvider).value;
+  if (profile?.branchId == null) return const Stream.empty();
+  final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+  return supabase
+      .from(SupabaseConstants.bills)
+      .stream(primaryKey: ['id'])
+      .eq('branch_id', profile!.branchId!)
+      .map((rows) => rows
+          .where((b) => (b['created_at'] as String? ?? '').startsWith(today))
+          .toList());
+});
+
+final _dashboardExpensesProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
+  final supabase = ref.watch(supabaseProvider);
+  final profile = ref.watch(authNotifierProvider).value;
+  if (profile?.branchId == null) return const Stream.empty();
+  final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+  return supabase
+      .from(SupabaseConstants.expenses)
+      .stream(primaryKey: ['id'])
+      .eq('branch_id', profile!.branchId!)
+      .map((rows) => rows
+          .where((e) => (e['created_at'] as String? ?? '').startsWith(today))
+          .toList());
+});
+
+final _dashboardKotsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
+  final supabase = ref.watch(supabaseProvider);
+  final profile = ref.watch(authNotifierProvider).value;
+  if (profile?.branchId == null) return const Stream.empty();
+  return supabase
+      .from(SupabaseConstants.kots)
+      .stream(primaryKey: ['id'])
+      .eq('branch_id', profile!.branchId!)
+      .map((rows) => rows.where((k) => k['status'] == 'pending').toList());
+});
+
+final _dashboardCreditProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
+  final supabase = ref.watch(supabaseProvider);
+  final profile = ref.watch(authNotifierProvider).value;
+  if (profile?.branchId == null) return const Stream.empty();
+  return supabase
+      .from(SupabaseConstants.creditRecords)
+      .stream(primaryKey: ['id'])
+      .eq('branch_id', profile!.branchId!)
+      .map((rows) => rows.where((c) => c['status'] != 'paid').toList());
+});
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -16,7 +66,6 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(authNotifierProvider);
-    final supabase = ref.watch(supabaseProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -57,7 +106,7 @@ class DashboardScreen extends ConsumerWidget {
                       if (profile.isBranchManager) ...[
                         const _SectionHeader('Today\'s Overview'),
                         const SizedBox(height: 16),
-                        _ManagerStatsGrid(supabase: supabase),
+                        const _ManagerStatsGrid(),
                         const SizedBox(height: 24),
                         const _SectionHeader('Quick Actions'),
                         const SizedBox(height: 16),
@@ -117,65 +166,59 @@ class _SectionHeader extends StatelessWidget {
 }
 
 class _ManagerStatsGrid extends ConsumerWidget {
-  final SupabaseClient supabase;
-  const _ManagerStatsGrid({required this.supabase});
+  const _ManagerStatsGrid();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    return FutureBuilder(
-      future: Future.wait([
-        supabase.from(SupabaseConstants.bills)
-            .select('total_amount, payment_status')
-            .gte('created_at', '${today}T00:00:00')
-            .lte('created_at', '${today}T23:59:59'),
-        supabase.from(SupabaseConstants.expenses)
-            .select('amount')
-            .gte('created_at', '${today}T00:00:00'),
-        supabase.from(SupabaseConstants.kots)
-            .select('id')
-            .eq('status', 'pending'),
-        supabase.from(SupabaseConstants.creditRecords)
-            .select('credit_amount, paid_amount')
-            .neq('status', 'paid'),
-      ]),
-      builder: (context, snapshot) {
-        double todaySales = 0;
-        double expenses = 0;
-        int pendingKots = 0;
-        double creditOutstanding = 0;
+    final billsAsync = ref.watch(_dashboardBillsProvider);
+    final expensesAsync = ref.watch(_dashboardExpensesProvider);
+    final kotsAsync = ref.watch(_dashboardKotsProvider);
+    final creditAsync = ref.watch(_dashboardCreditProvider);
 
-        if (snapshot.hasData) {
-          final bills = snapshot.data![0] as List;
-          final expenseList = snapshot.data![1] as List;
-          final kots = snapshot.data![2] as List;
-          final credits = snapshot.data![3] as List;
+    final fmt = NumberFormat('#,##0.00');
 
-          todaySales = bills
-              .where((b) => b['payment_status'] == 'paid')
-              .fold(0.0, (s, b) => s + ((b['total_amount'] as num?)?.toDouble() ?? 0));
-          expenses = expenseList.fold(0.0, (s, e) => s + ((e['amount'] as num?)?.toDouble() ?? 0));
-          pendingKots = kots.length;
-          creditOutstanding = credits.fold(0.0, (s, c) =>
-              s + (((c['credit_amount'] as num?)?.toDouble() ?? 0) - ((c['paid_amount'] as num?)?.toDouble() ?? 0)));
-        }
+    double todaySales = 0;
+    double expenses = 0;
+    int pendingKots = 0;
+    double creditOutstanding = 0;
 
-        final fmt = NumberFormat('#,##0.00');
-        return GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 1.8,
-          children: [
-            _StatCard('Today\'s Sales', 'NPR ${fmt.format(todaySales)}', Icons.trending_up_rounded, AppColors.success),
-            _StatCard('Today\'s Expenses', 'NPR ${fmt.format(expenses)}', Icons.money_off_rounded, AppColors.error),
-            _StatCard('Pending KOTs', pendingKots.toString(), Icons.receipt_outlined, AppColors.warning),
-            _StatCard('Credit Outstanding', 'NPR ${fmt.format(creditOutstanding)}', Icons.account_balance_wallet_rounded, AppColors.info),
-          ].animate(interval: 80.ms).fadeIn().slideY(begin: 0.2),
-        );
-      },
+    billsAsync.whenData((bills) {
+      todaySales = bills
+          .where((b) => b['payment_status'] == 'paid')
+          .fold(0.0, (s, b) => s + ((b['total_amount'] as num?)?.toDouble() ?? 0));
+    });
+    expensesAsync.whenData((expList) {
+      expenses = expList.fold(0.0, (s, e) => s + ((e['amount'] as num?)?.toDouble() ?? 0));
+    });
+    kotsAsync.whenData((kots) {
+      pendingKots = kots.length;
+    });
+    creditAsync.whenData((credits) {
+      creditOutstanding = credits.fold(0.0, (s, c) =>
+          s + (((c['credit_amount'] as num?)?.toDouble() ?? 0) -
+               ((c['paid_amount'] as num?)?.toDouble() ?? 0)));
+    });
+
+    final isLoading = billsAsync.isLoading || expensesAsync.isLoading ||
+        kotsAsync.isLoading || creditAsync.isLoading;
+
+    return AnimatedOpacity(
+      opacity: isLoading ? 0.5 : 1.0,
+      duration: const Duration(milliseconds: 300),
+      child: GridView.count(
+        crossAxisCount: 2,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 1.8,
+        children: [
+          _StatCard('Today\'s Sales', 'NPR ${fmt.format(todaySales)}', Icons.trending_up_rounded, AppColors.success),
+          _StatCard('Today\'s Expenses', 'NPR ${fmt.format(expenses)}', Icons.money_off_rounded, AppColors.error),
+          _StatCard('Pending KOTs', pendingKots.toString(), Icons.receipt_outlined, AppColors.warning),
+          _StatCard('Credit Outstanding', 'NPR ${fmt.format(creditOutstanding)}', Icons.account_balance_wallet_rounded, AppColors.info),
+        ].animate(interval: 80.ms).fadeIn().slideY(begin: 0.2),
+      ),
     );
   }
 }

@@ -33,15 +33,15 @@ final kitchenKotsProvider = StreamProvider<List<Kot>>((ref) {
           .toList());
 });
 
-// KOT items for a specific KOT
-final kotItemsProvider = FutureProvider.family<List<KotItem>, String>((ref, kotId) async {
+// KOT items for a specific KOT - real-time stream
+final kotItemsProvider = StreamProvider.family<List<KotItem>, String>((ref, kotId) {
   final supabase = ref.watch(supabaseProvider);
-  final data = await supabase
+  return supabase
       .from(SupabaseConstants.kotItems)
-      .select()
+      .stream(primaryKey: ['id'])
       .eq('kot_id', kotId)
-      .order('id');
-  return data.map((r) => KotItem.fromJson(r)).toList();
+      .order('id')
+      .map((rows) => rows.map((r) => KotItem.fromJson(r)).toList());
 });
 
 // Kitchen status notifier

@@ -7,16 +7,16 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
-final suppliersProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final suppliersProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
   final supabase = ref.watch(supabaseProvider);
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile == null) return [];
-  final data = await supabase
+  if (profile == null) return const Stream.empty();
+  return supabase
       .from(SupabaseConstants.suppliers)
-      .select()
+      .stream(primaryKey: ['id'])
       .eq('branch_id', profile.branchId ?? '')
-      .order('name');
-  return List<Map<String, dynamic>>.from(data);
+      .order('name')
+      .map((rows) => List<Map<String, dynamic>>.from(rows));
 });
 
 class SupplierScreen extends ConsumerStatefulWidget {
@@ -222,7 +222,6 @@ class _SupplierScreenState extends ConsumerState<SupplierScreen> {
 
               if (ctx.mounted) {
                 Navigator.pop(ctx);
-                ref.invalidate(suppliersProvider);
               }
             },
             child: Text(isEdit ? 'Update' : 'Add'),
@@ -251,7 +250,6 @@ class _SupplierScreenState extends ConsumerState<SupplierScreen> {
     );
     if (confirmed != true) return;
     await ref.read(supabaseProvider).from(SupabaseConstants.suppliers).delete().eq('id', id);
-    ref.invalidate(suppliersProvider);
   }
 }
 

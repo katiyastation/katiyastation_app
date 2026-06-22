@@ -8,11 +8,13 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
-final branchesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+final branchesProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
   final supabase = ref.watch(supabaseProvider);
-  final data =
-      await supabase.from(SupabaseConstants.branches).select().order('name');
-  return List<Map<String, dynamic>>.from(data);
+  return supabase
+      .from(SupabaseConstants.branches)
+      .stream(primaryKey: ['id'])
+      .order('name')
+      .map((rows) => List<Map<String, dynamic>>.from(rows));
 });
 
 class BranchManagementScreen extends ConsumerWidget {

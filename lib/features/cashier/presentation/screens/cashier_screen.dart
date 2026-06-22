@@ -9,6 +9,63 @@ import '../../../../core/constants/app_constants.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
+// Real-time session billing data provider
+final _sessionBillingProvider =
+    StreamProvider.family<Map<String, dynamic>, String>((ref, sessionId) {
+  if (sessionId.isEmpty) return const Stream.empty();
+  final supabase = ref.watch(supabaseProvider);
+  // Stream KOTs for this session; on each update, load items
+  return supabase
+      .from(SupabaseConstants.kots)
+      .stream(primaryKey: ['id'])
+      .eq('session_id', sessionId)
+      .order('created_at')
+      .asyncMap((kotRows) async {
+        final kots =
+            kotRows.where((k) => k['status'] != 'cancelled').toList();
+
+        List<Map<String, dynamic>> allItems = [];
+        for (final kot in kots) {
+          final items = await supabase
+              .from(SupabaseConstants.kotItems)
+              .select()
+              .eq('kot_id', kot['id'] as String);
+          allItems.addAll(List<Map<String, dynamic>>.from(items));
+        }
+
+        // Aggregate items by menu_item_id
+        final Map<String, Map<String, dynamic>> aggregated = {};
+        for (final item in allItems) {
+          final key = item['menu_item_id'] as String;
+          if (aggregated.containsKey(key)) {
+            aggregated[key]!['quantity'] =
+                (aggregated[key]!['quantity'] as int) +
+                    (item['quantity'] as int);
+          } else {
+            aggregated[key] = {
+              'menu_item_id': item['menu_item_id'],
+              'menu_item_name': item['menu_item_name'] ?? item['name'],
+              'quantity': item['quantity'],
+              'unit_price': item['unit_price'],
+            };
+          }
+        }
+
+        double subtotal = 0;
+        for (final item in aggregated.values) {
+          subtotal +=
+              ((item['unit_price'] as num?)?.toDouble() ?? 0) *
+              (item['quantity'] as int);
+        }
+
+        return {
+          'items': aggregated.values.toList(),
+          'subtotal': subtotal,
+          'kots': kots,
+        };
+      });
+});
+
 class CashierScreen extends ConsumerStatefulWidget {
   final String sessionId;
   final String tableId;
@@ -52,18 +109,12 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
       ),
       body: widget.sessionId.isEmpty
           ? _noSessionView(context)
-          : FutureBuilder(
-              future: _loadSessionData(),
-              builder: (ctx, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-                }
-                if (snapshot.hasError || snapshot.data == null) {
-                  return Center(child: Text('Error: ${snapshot.error ?? "No session data"}'));
-                }
-                final data = snapshot.data!;
-                return _buildBillingView(data, profile);
-              },
+          : ref.watch(_sessionBillingProvider(widget.sessionId)).when(
+              loading: () =>
+                  const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+              error: (e, _) =>
+                  Center(child: Text('Error loading session: $e')),
+              data: (data) => _buildBillingView(data, profile),
             ),
     );
   }
@@ -88,54 +139,6 @@ class _CashierScreenState extends ConsumerState<CashierScreen> {
         ],
       ),
     );
-  }
-
-  Future<Map<String, dynamic>> _loadSessionData() async {
-    final supabase = ref.read(supabaseProvider);
-    // Load KOTs
-    final kots = await supabase
-        .from(SupabaseConstants.kots)
-        .select()
-        .eq('session_id', widget.sessionId)
-        .neq('status', 'cancelled')
-        .order('created_at');
-
-    // Load KOT items
-    List<Map<String, dynamic>> allItems = [];
-    for (final kot in kots) {
-      final items = await supabase
-          .from(SupabaseConstants.kotItems)
-          .select()
-          .eq('kot_id', kot['id']);
-      allItems.addAll(items);
-    }
-
-    // Aggregate items
-    final Map<String, Map<String, dynamic>> aggregated = {};
-    for (final item in allItems) {
-      final key = item['menu_item_id'] as String;
-      if (aggregated.containsKey(key)) {
-        aggregated[key]!['quantity'] = (aggregated[key]!['quantity'] as int) + (item['quantity'] as int);
-      } else {
-        aggregated[key] = {
-          'menu_item_id': item['menu_item_id'],
-          'menu_item_name': item['menu_item_name'],
-          'quantity': item['quantity'],
-          'unit_price': item['unit_price'],
-        };
-      }
-    }
-
-    double subtotal = 0;
-    for (final item in aggregated.values) {
-      subtotal += ((item['unit_price'] as num?)?.toDouble() ?? 0) * (item['quantity'] as int);
-    }
-
-    return {
-      'items': aggregated.values.toList(),
-      'subtotal': subtotal,
-      'kots': kots,
-    };
   }
 
   Widget _buildBillingView(Map<String, dynamic> data, dynamic profile) {
