@@ -204,6 +204,7 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
                   'type': type,
                   'is_active': true,
                 });
+                ref.invalidate(menuCategoriesStreamProvider);
                 if (context.mounted) Navigator.pop(ctx);
               } catch (e) {
                 scaffoldMessenger.showSnackBar(
@@ -266,6 +267,9 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
                   await supabase.from(SupabaseConstants.menuItems).insert({'id': const Uuid().v4(), ...data});
                 } else {
                   await supabase.from(SupabaseConstants.menuItems).update(data).eq('id', existing.id);
+                }
+                if (_selectedCatId != null) {
+                  ref.invalidate(menuItemsByCatProvider(_selectedCatId!));
                 }
                 if (context.mounted) Navigator.pop(ctx);
               } catch (e) {
@@ -456,6 +460,7 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
   Future<void> _deleteCategory(String id) async {
     final supabase = ref.read(supabaseProvider);
     await supabase.from(SupabaseConstants.menuCategories).delete().eq('id', id);
+    ref.invalidate(menuCategoriesStreamProvider);
     if (_selectedCatId == id) setState(() => _selectedCatId = null);
   }
 
@@ -478,6 +483,9 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
     if (confirmed != true) return;
     final supabase = ref.read(supabaseProvider);
     await supabase.from(SupabaseConstants.menuItems).delete().eq('id', id);
+    if (_selectedCatId != null) {
+      ref.invalidate(menuItemsByCatProvider(_selectedCatId!));
+    }
   }
 }
 
@@ -547,7 +555,7 @@ class _MenuItemCard extends StatelessWidget {
                 child: item.imageUrl != null && item.imageUrl!.isNotEmpty
                     ? Image.network(
                         item.imageUrl!,
-                        height: 72,
+                        height: 64,
                         width: double.infinity,
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => _placeholder(),
@@ -582,32 +590,37 @@ class _MenuItemCard extends StatelessWidget {
               ),
             ],
           ),
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(item.name, style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 2),
-              Text('NPR ${fmt.format(item.price)}', style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary)),
-              const SizedBox(height: 6),
-              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: (item.isAvailable ? AppColors.success : AppColors.error).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(item.isAvailable ? 'Available' : 'Off', style: GoogleFonts.outfit(fontSize: 10, color: item.isAvailable ? AppColors.success : AppColors.error)),
-                ),
-                GestureDetector(
-                  onTap: () async {
-                    final supabase = ref.read(supabaseProvider);
-                    await supabase.from(SupabaseConstants.menuItems).update({'is_available': !item.isAvailable}).eq('id', item.id);
-                  },
-                  child: Icon(item.isAvailable ? Icons.toggle_on_rounded : Icons.toggle_off_rounded,
-                      color: item.isAvailable ? AppColors.success : AppColors.textHint, size: 22),
-                ),
-              ]),
-            ]),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(item.name, style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text('NPR ${fmt.format(item.price)}', style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary)),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: (item.isAvailable ? AppColors.success : AppColors.error).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(item.isAvailable ? 'Available' : 'Off', style: GoogleFonts.outfit(fontSize: 10, color: item.isAvailable ? AppColors.success : AppColors.error)),
+                    ),
+                    GestureDetector(
+                      onTap: () async {
+                        final supabase = ref.read(supabaseProvider);
+                        await supabase.from(SupabaseConstants.menuItems).update({'is_available': !item.isAvailable}).eq('id', item.id);
+                        ref.invalidate(menuItemsByCatProvider(item.categoryId));
+                      },
+                      child: Icon(item.isAvailable ? Icons.toggle_on_rounded : Icons.toggle_off_rounded,
+                          color: item.isAvailable ? AppColors.success : AppColors.textHint, size: 22),
+                    ),
+                  ]),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -616,7 +629,7 @@ class _MenuItemCard extends StatelessWidget {
 
   Widget _placeholder() {
     return Container(
-      height: 72,
+      height: 64,
       width: double.infinity,
       color: AppColors.primary.withValues(alpha: 0.05),
       child: const Icon(Icons.restaurant_menu_rounded, color: AppColors.primary, size: 24),

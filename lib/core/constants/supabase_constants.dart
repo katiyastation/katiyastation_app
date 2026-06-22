@@ -5,7 +5,6 @@ class SupabaseConstants {
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpteG9ha2V4YW9icHZtbHp3eGN1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIwMjE2NzIsImV4cCI6MjA5NzU5NzY3Mn0.sRzq1AvmhWc3TE-PJttzDKlbIdLSlPSQVJokg47NbKk';
 
   // Table names
-  
   static const String branches = 'branches';
   static const String userProfiles = 'user_profiles';
   static const String restaurantTables = 'restaurant_tables';

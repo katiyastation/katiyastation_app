@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../orders/domain/entities/order_entities.dart';
+import '../../../dashboard/presentation/screens/dashboard_screen.dart';
 
 // All pending/preparing KOTs (kitchen view)
 final kitchenKotsProvider = StreamProvider<List<Kot>>((ref) {
@@ -59,6 +60,9 @@ class KitchenNotifier extends StateNotifier<AsyncValue<void>> {
           if (newStatus == 'served') 'served_at': DateTime.now().toIso8601String(),
         })
         .eq('id', kotId);
+    _ref.invalidate(kitchenKotsProvider);
+    _ref.invalidate(kotItemsProvider(kotId));
+    _ref.invalidate(dashboardKotsProvider);
   }
 }
 

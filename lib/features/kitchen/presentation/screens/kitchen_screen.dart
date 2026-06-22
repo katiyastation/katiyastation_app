@@ -7,6 +7,7 @@ import 'package:skeletonizer/skeletonizer.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../providers/kitchen_provider.dart';
 import '../../../orders/domain/entities/order_entities.dart';
+import '../../../orders/presentation/providers/order_provider.dart';
 
 class KitchenScreen extends ConsumerWidget {
   const KitchenScreen({super.key});
@@ -341,8 +342,11 @@ class _KotCard extends ConsumerWidget {
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
-                onPressed: () => ref.read(kitchenNotifierProvider.notifier)
-                    .updateKotStatus(kot.id, nextStatus),
+                onPressed: () {
+                  ref.read(kitchenNotifierProvider.notifier)
+                      .updateKotStatus(kot.id, nextStatus);
+                  ref.invalidate(sessionKotsProvider(kot.sessionId));
+                },
                 child: Text(nextLabel, style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w600)),
               ),
             ),

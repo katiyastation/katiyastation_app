@@ -127,6 +127,7 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
             'status': 'received',
             'created_at': DateTime.now().toIso8601String(),
           });
+          ref.invalidate(purchasesProvider);
           if (context.mounted) Navigator.pop(ctx);
         }, child: const Text('Save')),
       ],

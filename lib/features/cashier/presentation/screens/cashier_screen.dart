@@ -10,6 +10,8 @@ import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../tables/presentation/providers/tables_provider.dart';
+import '../../../dashboard/presentation/screens/dashboard_screen.dart';
+import '../../../payment_history/presentation/screens/payment_history_screen.dart';
 
 // Real-time session billing data provider
 final _sessionBillingProvider =
@@ -1503,6 +1505,13 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
             'bill_requested_at': null,
           })
           .eq('id', _selectedTableId!);
+
+      ref.invalidate(tablesStreamProvider);
+      ref.invalidate(tableSessionProvider(_selectedTableId!));
+      ref.invalidate(dashboardBillsProvider);
+      ref.invalidate(dashboardCreditProvider);
+      ref.invalidate(dashboardSessionsProvider);
+      ref.invalidate(billsStreamProvider);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

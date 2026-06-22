@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../dashboard/presentation/screens/dashboard_screen.dart';
 
 const _categories = ['Rent', 'Electricity', 'Internet', 'Gas', 'Salaries', 'Maintenance', 'Miscellaneous'];
 
@@ -150,6 +151,8 @@ class _ExpenseScreenState extends ConsumerState<ExpenseScreen> {
             'amount': double.tryParse(amountCtrl.text) ?? 0,
             'created_at': DateTime.now().toIso8601String(),
           });
+          ref.invalidate(expensesProvider);
+          ref.invalidate(dashboardExpensesProvider);
           if (context.mounted) Navigator.pop(ctx);
         }, child: const Text('Save')),
       ],

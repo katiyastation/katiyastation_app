@@ -4,6 +4,8 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../menu/domain/entities/menu_entities.dart';
 import '../../domain/entities/order_entities.dart';
+import '../../../tables/presentation/providers/tables_provider.dart';
+import '../../../dashboard/presentation/screens/dashboard_screen.dart';
 
 // Menu categories for ordering (by branchId)
 final menuCategoriesProvider = StreamProvider.family<List<MenuCategory>, String>((ref, branchId) {
@@ -182,6 +184,11 @@ class OrderNotifier extends StateNotifier<List<CartItem>> {
       quantity: c.quantity,
       unitPrice: c.item.price,
     )).toList();
+
+    _ref.invalidate(sessionKotsProvider(sessionId));
+    _ref.invalidate(tableSessionProvider(tableId));
+    _ref.invalidate(dashboardKotsProvider);
+    _ref.invalidate(dashboardSessionsProvider);
 
     clearCart();
     return Kot(

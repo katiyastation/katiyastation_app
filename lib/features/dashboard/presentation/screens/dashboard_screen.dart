@@ -11,7 +11,7 @@ import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../tables/presentation/providers/tables_provider.dart';
 
 // ── Real-time dashboard stat providers ──
-final _dashboardBillsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
+final dashboardBillsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
   final supabase = ref.watch(supabaseProvider);
   final profile = ref.watch(authNotifierProvider).value;
   if (profile?.branchId == null) return const Stream.empty();
@@ -25,7 +25,7 @@ final _dashboardBillsProvider = StreamProvider<List<Map<String, dynamic>>>((ref)
           .toList());
 });
 
-final _dashboardExpensesProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
+final dashboardExpensesProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
   final supabase = ref.watch(supabaseProvider);
   final profile = ref.watch(authNotifierProvider).value;
   if (profile?.branchId == null) return const Stream.empty();
@@ -39,7 +39,7 @@ final _dashboardExpensesProvider = StreamProvider<List<Map<String, dynamic>>>((r
           .toList());
 });
 
-final _dashboardKotsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
+final dashboardKotsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
   final supabase = ref.watch(supabaseProvider);
   final profile = ref.watch(authNotifierProvider).value;
   if (profile?.branchId == null) return const Stream.empty();
@@ -50,7 +50,7 @@ final _dashboardKotsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) 
       .map((rows) => rows.where((k) => k['status'] == 'pending').toList());
 });
 
-final _dashboardCreditProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
+final dashboardCreditProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
   final supabase = ref.watch(supabaseProvider);
   final profile = ref.watch(authNotifierProvider).value;
   if (profile?.branchId == null) return const Stream.empty();
@@ -179,10 +179,10 @@ class _ManagerStatsGrid extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final billsAsync = ref.watch(_dashboardBillsProvider);
-    final expensesAsync = ref.watch(_dashboardExpensesProvider);
-    final kotsAsync = ref.watch(_dashboardKotsProvider);
-    final creditAsync = ref.watch(_dashboardCreditProvider);
+    final billsAsync = ref.watch(dashboardBillsProvider);
+    final expensesAsync = ref.watch(dashboardExpensesProvider);
+    final kotsAsync = ref.watch(dashboardKotsProvider);
+    final creditAsync = ref.watch(dashboardCreditProvider);
 
     final fmt = NumberFormat('#,##0.00');
 
@@ -316,7 +316,6 @@ class _QuickActionsGrid extends StatelessWidget {
           {'icon': Icons.bar_chart_rounded, 'label': 'Reports', 'color': AppColors.warning, 'onTap': () => context.go('/reports')},
           {'icon': Icons.people_rounded, 'label': 'Staff', 'color': AppColors.roleKitchen, 'onTap': () => context.go('/staff')},
           {'icon': Icons.account_balance_wallet_rounded, 'label': 'Credit', 'color': AppColors.error, 'onTap': () => context.go('/credit')},
-          {'icon': Icons.event_seat_rounded, 'label': 'Reservations', 'color': AppColors.roleCashier, 'onTap': () => context.go('/reservations')},
         ];
       case AppConstants.roleCashier:
         return [
@@ -419,7 +418,7 @@ class _KitchenQuickNav extends StatelessWidget {
 
 // ── Cashier Real-time Overview Widgets ──
 
-final _dashboardSessionsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
+final dashboardSessionsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
   final supabase = ref.watch(supabaseProvider);
   final profile = ref.watch(authNotifierProvider).value;
   if (profile?.branchId == null) return const Stream.empty();
@@ -437,7 +436,7 @@ class _CashierStatsGrid extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final billsAsync = ref.watch(_dashboardBillsProvider);
+    final billsAsync = ref.watch(dashboardBillsProvider);
     final tablesAsync = ref.watch(tablesStreamProvider);
     
     final fmt = NumberFormat('#,##0.00');
@@ -489,7 +488,7 @@ class _CashierLiveTablesGrid extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tablesAsync = ref.watch(tablesStreamProvider);
-    final sessionsAsync = ref.watch(_dashboardSessionsProvider);
+    final sessionsAsync = ref.watch(dashboardSessionsProvider);
     final fmt = NumberFormat('#,##0');
 
     return tablesAsync.when(

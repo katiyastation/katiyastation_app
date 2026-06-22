@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -16,156 +17,123 @@ class TablesScreen extends ConsumerStatefulWidget {
   ConsumerState<TablesScreen> createState() => _TablesScreenState();
 }
 
-class _TablesScreenState extends ConsumerState<TablesScreen> {
+class _TablesScreenState extends ConsumerState<TablesScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   String _selectedSection = 'All';
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final tablesAsync = ref.watch(tablesStreamProvider);
     final profile = ref.watch(authNotifierProvider).value;
+    final isManager = profile?.isBranchManager == true;
+    final isCashier = profile?.isCashier == true;
+    final canManage = isManager || isCashier;
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Tables'),
+        backgroundColor: AppColors.surface,
+        elevation: 0,
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.gradientStart, AppColors.gradientEnd],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.table_restaurant_rounded,
+                  color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Text('Table Management',
+                style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 18,
+                    color: AppColors.textPrimary)),
+          ],
+        ),
         actions: [
-          if (profile?.isBranchManager == true || profile?.isCashier == true)
-            TextButton.icon(
-              icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('Add Table'),
+          if (canManage)
+            IconButton(
+              icon: const Icon(Icons.add_rounded, color: AppColors.primary),
+              tooltip: 'Add Table',
               onPressed: () => _showAddTableDialog(context),
             ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: AppColors.primary,
+          labelColor: AppColors.primary,
+          unselectedLabelColor: AppColors.textSecondary,
+          labelStyle:
+              GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 13),
+          unselectedLabelStyle:
+              GoogleFonts.outfit(fontWeight: FontWeight.w400, fontSize: 13),
+          tabs: const [
+            Tab(icon: Icon(Icons.grid_view_rounded, size: 18), text: 'Floor'),
+            Tab(icon: Icon(Icons.event_note_rounded, size: 18), text: 'Reservations'),
+          ],
+        ),
       ),
-      body: tablesAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-        error: (e, _) => Center(child: Text('Error: $e', style: const TextStyle(color: AppColors.error))),
-        data: (tables) {
-          final sections = ['All', ...{...tables.map((t) => t.section)}];
-          final filtered = _selectedSection == 'All'
-              ? tables
-              : tables.where((t) => t.section == _selectedSection).toList();
-
-          final available = tables.where((t) => t.isAvailable).length;
-          final occupied = tables.where((t) => t.isOccupied).length;
-          final reserved = tables.where((t) => t.isReserved).length;
-
-          return Column(
-            children: [
-              // Status summary
-              Container(
-                color: AppColors.surface,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                child: Row(
-                  children: [
-                    _StatusChip('Available', available, AppColors.tableAvailable),
-                    const SizedBox(width: 12),
-                    _StatusChip('Occupied', occupied, AppColors.tableOccupied),
-                    const SizedBox(width: 12),
-                    _StatusChip('Reserved', reserved, AppColors.tableReserved),
-                  ],
-                ),
-              ),
-              // Section filter
-              if (sections.length > 2)
-                Container(
-                  height: 48,
-                  color: AppColors.surface,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    itemCount: sections.length,
-                    itemBuilder: (ctx, i) {
-                      final sec = sections[i];
-                      final isSelected = sec == _selectedSection;
-                      return GestureDetector(
-                        onTap: () => setState(() => _selectedSection = sec),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 150),
-                          margin: const EdgeInsets.only(right: 8),
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          decoration: BoxDecoration(
-                            color: isSelected ? AppColors.primary : AppColors.surfaceVariant,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(sec,
-                              style: GoogleFonts.outfit(
-                                fontSize: 13,
-                                color: isSelected ? AppColors.onPrimary : AppColors.textSecondary,
-                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                              )),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              const Divider(height: 1),
-              Expanded(
-                child: filtered.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(Icons.table_restaurant_outlined,
-                                size: 64, color: AppColors.textSecondary),
-                            const SizedBox(height: 16),
-                            Text('No tables found',
-                                style: GoogleFonts.outfit(color: AppColors.textSecondary)),
-                            const SizedBox(height: 8),
-                            if (profile?.isBranchManager == true)
-                              ElevatedButton(
-                                onPressed: () => _showAddTableDialog(context),
-                                child: const Text('Add First Table'),
-                              ),
-                          ],
-                        ),
-                      )
-                    : GridView.builder(
-                        padding: const EdgeInsets.all(16),
-                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 200,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                          childAspectRatio: 1.0,
-                        ),
-                        itemCount: filtered.length,
-                        itemBuilder: (ctx, i) => _TableCard(
-                          table: filtered[i],
-                          onTap: () => _handleTableTap(context, filtered[i]),
-                        ).animate().fadeIn(delay: Duration(milliseconds: i * 40)).scale(begin: const Offset(0.9, 0.9)),
-                      ),
-              ),
-            ],
-          );
-        },
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          // ── Floor Layout Tab ──────────────────────────────────────────
+          tablesAsync.when(
+            loading: () =>
+                const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+            error: (e, _) => Center(
+                child: Text('Error: $e',
+                    style: const TextStyle(color: AppColors.error))),
+            data: (tables) => _FloorView(
+              tables: tables,
+              selectedSection: _selectedSection,
+              onSectionChanged: (s) => setState(() => _selectedSection = s),
+              canManage: canManage,
+              isManager: isManager,
+              onTableTap: (t) => _handleTableTap(context, t),
+              onTableLongPress: (t) =>
+                  isManager ? _showTableContextMenu(context, t) : null,
+            ),
+          ),
+          // ── Reservations Tab ──────────────────────────────────────────
+          _ReservationsTab(canManage: canManage),
+        ],
       ),
     );
   }
 
+  // ────────────────────────────────────────────────────────────────────────
   void _handleTableTap(BuildContext context, RestaurantTable table) async {
-    if (table.isAvailable) {
-      // Ask to open session
-      final guestCount = await _showGuestCountDialog(context);
-      if (guestCount == null || !context.mounted) return;
-      final session = await ref.read(tableNotifierProvider.notifier)
-          .openSession(table.id, guestCount: guestCount);
-      if (session != null && context.mounted) {
-        context.go('/tables/${table.id}/order?sessionId=${session.id}');
-      }
-    } else if (table.isOccupied) {
-      // Go to existing order
-      final sessionAsync = ref.read(tableSessionProvider(table.id));
-      sessionAsync.when(
-        data: (session) {
-          if (session != null && context.mounted) {
-            context.go('/tables/${table.id}/order?sessionId=${session.id}');
-          }
-        },
-        loading: () {},
-        error: (_, __) {},
+    if (table.isDisabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('This table is currently disabled.'),
+            backgroundColor: AppColors.textSecondary),
       );
-      // Refresh and navigate
+      return;
+    }
+
+    if (table.isAvailable) {
+      await _showOpenSessionDialog(context, table);
+    } else if (table.isOccupied || table.isReadyForBilling) {
+      // Navigate to existing session
       final session = await ref.read(supabaseProvider)
           .from(SupabaseConstants.tableSessions)
           .select()
@@ -173,268 +141,2008 @@ class _TablesScreenState extends ConsumerState<TablesScreen> {
           .eq('status', 'open')
           .maybeSingle();
       if (session != null && context.mounted) {
-        context.go('/tables/${table.id}/order?sessionId=${session['id']}');
+        _showSessionActionsDialog(context, table, TableSession.fromJson(session));
       }
+    } else if (table.isReserved) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Table is reserved. Convert from Reservations tab.'),
+            backgroundColor: AppColors.tableReserved),
+      );
     }
   }
 
-  Future<int?> _showGuestCountDialog(BuildContext context) async {
+  Future<void> _showOpenSessionDialog(
+      BuildContext context, RestaurantTable table) async {
     int guests = 2;
-    return showDialog<int>(
+    final notesCtrl = TextEditingController();
+    await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Open Table Session'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
+        backgroundColor: AppColors.surface,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('How many guests?', style: TextStyle(color: AppColors.textSecondary)),
-            const SizedBox(height: 16),
-            StatefulBuilder(
-              builder: (ctx, setLocal) => Row(
+            Text('Open Session',
+                style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            Text('Table ${table.tableNumber} · ${table.section}',
+                style: GoogleFonts.outfit(
+                    fontSize: 13, color: AppColors.textSecondary)),
+          ],
+        ),
+        content: StatefulBuilder(
+          builder: (ctx, setLocal) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Text('Number of Guests',
+                  style: GoogleFonts.outfit(
+                      color: AppColors.textSecondary, fontSize: 13)),
+              const SizedBox(height: 12),
+              Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  IconButton(
-                    onPressed: () => setLocal(() { if (guests > 1) guests--; }),
-                    icon: const Icon(Icons.remove_circle_outline, color: AppColors.primary),
+                  _CircleIconBtn(
+                    icon: Icons.remove,
+                    onTap: () => setLocal(() {
+                      if (guests > 1) guests--;
+                    }),
                   ),
-                  Container(
-                    width: 60,
-                    alignment: Alignment.center,
-                    child: Text(guests.toString(),
-                        style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                  ),
-                  IconButton(
-                    onPressed: () => setLocal(() { guests++; }),
-                    icon: const Icon(Icons.add_circle_outline, color: AppColors.primary),
+                  const SizedBox(width: 24),
+                  Text('$guests',
+                      style: GoogleFonts.outfit(
+                          fontSize: 36,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primary)),
+                  const SizedBox(width: 24),
+                  _CircleIconBtn(
+                    icon: Icons.add,
+                    onTap: () => setLocal(() => guests++),
                   ),
                 ],
               ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: notesCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Notes (optional)',
+                  hintText: 'e.g. Birthday table, Allergy info',
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  isDense: true,
+                ),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            icon: const Icon(Icons.play_arrow_rounded, size: 18),
+            label: const Text('Open Session'),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final session = await ref
+                  .read(tableNotifierProvider.notifier)
+                  .openSession(table.id,
+                      guestCount: guests,
+                      notes: notesCtrl.text.trim().isEmpty
+                          ? null
+                          : notesCtrl.text.trim());
+              if (session != null && context.mounted) {
+                context.go(
+                    '/tables/${table.id}/order?sessionId=${session.id}');
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSessionActionsDialog(
+      BuildContext context, RestaurantTable table, TableSession session) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: const BoxDecoration(
+                      color: AppColors.tableOccupied,
+                      shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 8),
+                Text('Table ${table.tableNumber}',
+                    style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 18,
+                        color: AppColors.textPrimary)),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+                '${session.sessionNumber} · ${session.guestCount} guests · ${session.durationLabel}',
+                style: GoogleFonts.outfit(
+                    fontSize: 12, color: AppColors.textSecondary)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ActionTile(
+              icon: Icons.restaurant_menu_rounded,
+              label: 'View / Add Orders',
+              color: AppColors.primary,
+              onTap: () {
+                Navigator.pop(ctx);
+                context.go(
+                    '/tables/${table.id}/order?sessionId=${session.id}');
+              },
+            ),
+            _ActionTile(
+              icon: Icons.receipt_long_rounded,
+              label: 'Request Bill',
+              color: AppColors.warning,
+              onTap: () async {
+                Navigator.pop(ctx);
+                await ref
+                    .read(tableNotifierProvider.notifier)
+                    .requestBill(table.id, session.id);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Bill requested!'),
+                      backgroundColor: AppColors.warning));
+                }
+              },
+            ),
+            _ActionTile(
+              icon: Icons.swap_horiz_rounded,
+              label: 'Transfer Table',
+              color: AppColors.info,
+              onTap: () {
+                Navigator.pop(ctx);
+                _showTransferDialog(context, table, session);
+              },
+            ),
+            _ActionTile(
+              icon: Icons.point_of_sale_rounded,
+              label: 'Go to Cashier',
+              color: AppColors.success,
+              onTap: () {
+                Navigator.pop(ctx);
+                context.go(
+                    '/cashier?sessionId=${session.id}&tableId=${table.id}');
+              },
+            ),
+            _ActionTile(
+              icon: Icons.close_rounded,
+              label: 'Close & Free Table',
+              color: AppColors.error,
+              onTap: () {
+                Navigator.pop(ctx);
+                _confirmCloseSession(context, table, session);
+              },
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () => Navigator.pop(ctx, guests), child: const Text('Open')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
         ],
+      ),
+    );
+  }
+
+  void _showTransferDialog(
+      BuildContext context, RestaurantTable fromTable, TableSession session) {
+    final tablesAsync = ref.read(tablesStreamProvider);
+    final availableTables = tablesAsync.value
+            ?.where((t) => t.isAvailable && t.id != fromTable.id)
+            .toList() ??
+        [];
+
+    if (availableTables.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No available tables to transfer to.'),
+          backgroundColor: AppColors.error));
+      return;
+    }
+
+    String? selectedId;
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text('Transfer to Table',
+              style: GoogleFonts.outfit(fontWeight: FontWeight.w700)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Move session ${session.sessionNumber} from '
+                  'Table ${fromTable.tableNumber} to:',
+                  style: GoogleFonts.outfit(
+                      color: AppColors.textSecondary, fontSize: 13)),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: availableTables.map((t) {
+                  final isSelected = t.id == selectedId;
+                  return GestureDetector(
+                    onTap: () => setLocal(() => selectedId = t.id),
+                    child: AnimatedContainer(
+                      duration: 150.ms,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppColors.primary
+                            : AppColors.surfaceVariant,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected
+                              ? AppColors.primary
+                              : AppColors.border,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(t.tableNumber,
+                              style: GoogleFonts.outfit(
+                                  fontWeight: FontWeight.w700,
+                                  color: isSelected
+                                      ? Colors.white
+                                      : AppColors.textPrimary)),
+                          Text('Cap: ${t.capacity}',
+                              style: GoogleFonts.outfit(
+                                  fontSize: 10,
+                                  color: isSelected
+                                      ? Colors.white70
+                                      : AppColors.textHint)),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: selectedId == null
+                  ? null
+                  : () async {
+                      Navigator.pop(ctx);
+                      final ok = await ref
+                          .read(tableNotifierProvider.notifier)
+                          .transferSession(
+                            fromTableId: fromTable.id,
+                            toTableId: selectedId!,
+                            sessionId: session.id,
+                          );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text(ok
+                                ? 'Session transferred!'
+                                : 'Transfer failed'),
+                            backgroundColor:
+                                ok ? AppColors.success : AppColors.error));
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white),
+              child: const Text('Transfer'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _confirmCloseSession(
+      BuildContext context, RestaurantTable table, TableSession session) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Close Session?',
+            style: GoogleFonts.outfit(fontWeight: FontWeight.w700)),
+        content: Text(
+            'Are you sure you want to close session ${session.sessionNumber} '
+            'and free Table ${table.tableNumber}?\n\n'
+            'This should only be done if no payment is required.',
+            style:
+                GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 14)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final ok = await ref
+                  .read(tableNotifierProvider.notifier)
+                  .closeSession(table.id, session.id);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(
+                        ok ? 'Table freed!' : 'Failed to close session'),
+                    backgroundColor:
+                        ok ? AppColors.success : AppColors.error));
+              }
+            },
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.error,
+                foregroundColor: Colors.white),
+            child: const Text('Close Session'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showTableContextMenu(BuildContext context, RestaurantTable table) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.table_restaurant_rounded,
+                    color: AppColors.primary),
+                const SizedBox(width: 10),
+                Text('Table ${table.tableNumber}',
+                    style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 18,
+                        color: AppColors.textPrimary)),
+                const Spacer(),
+                IconButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    icon: const Icon(Icons.close_rounded,
+                        color: AppColors.textSecondary)),
+              ],
+            ),
+            const Divider(height: 20),
+            _ActionTile(
+              icon: Icons.edit_rounded,
+              label: 'Edit Table',
+              color: AppColors.info,
+              onTap: () {
+                Navigator.pop(ctx);
+                _showEditTableDialog(context, table);
+              },
+            ),
+            if (table.isEnabled && table.isAvailable)
+              _ActionTile(
+                icon: Icons.block_rounded,
+                label: 'Disable Table',
+                color: AppColors.textSecondary,
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await ref
+                      .read(tableNotifierProvider.notifier)
+                      .setTableEnabled(table.id, false);
+                },
+              ),
+            if (!table.isEnabled)
+              _ActionTile(
+                icon: Icons.check_circle_rounded,
+                label: 'Enable Table',
+                color: AppColors.success,
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await ref
+                      .read(tableNotifierProvider.notifier)
+                      .setTableEnabled(table.id, true);
+                },
+              ),
+            if (table.isAvailable)
+              _ActionTile(
+                icon: Icons.delete_outline_rounded,
+                label: 'Delete Table',
+                color: AppColors.error,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _confirmDeleteTable(context, table);
+                },
+              ),
+          ],
+        ),
       ),
     );
   }
 
   void _showAddTableDialog(BuildContext context) {
     final numCtrl = TextEditingController();
-    final sectionCtrl = TextEditingController(text: 'Main');
+    final sectionCtrl = TextEditingController(text: 'Ground Floor');
+    final descCtrl = TextEditingController();
     int capacity = 4;
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Add Table'),
+        backgroundColor: AppColors.surface,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Add Table',
+            style:
+                GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 18)),
         content: StatefulBuilder(
-          builder: (ctx, setLocal) => Column(
-            mainAxisSize: MainAxisSize.min,
+          builder: (ctx, setLocal) => SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _FormField(
+                    controller: numCtrl,
+                    label: 'Table Number',
+                    hint: 'e.g. A-01, T-05'),
+                const SizedBox(height: 12),
+                _FormField(
+                    controller: sectionCtrl,
+                    label: 'Floor / Section',
+                    hint: 'e.g. Ground Floor, Terrace'),
+                const SizedBox(height: 12),
+                _FormField(
+                    controller: descCtrl,
+                    label: 'Description (optional)',
+                    hint: 'e.g. Window table, Private',
+                    maxLines: 2),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Text('Capacity',
+                        style: GoogleFonts.outfit(
+                            color: AppColors.textSecondary, fontSize: 14)),
+                    const Spacer(),
+                    _CircleIconBtn(
+                        icon: Icons.remove,
+                        onTap: () =>
+                            setLocal(() => capacity > 1 ? capacity-- : null)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text('$capacity',
+                          style: GoogleFonts.outfit(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primary)),
+                    ),
+                    _CircleIconBtn(
+                        icon: Icons.add,
+                        onTap: () => setLocal(() => capacity++)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () async {
+              if (numCtrl.text.trim().isEmpty) return;
+              final ok = await ref
+                  .read(tableNotifierProvider.notifier)
+                  .addTable(
+                    tableNumber: numCtrl.text.trim(),
+                    section: sectionCtrl.text.trim().isEmpty
+                        ? 'Main'
+                        : sectionCtrl.text.trim(),
+                    capacity: capacity,
+                    description: descCtrl.text.trim().isEmpty
+                        ? null
+                        : descCtrl.text.trim(),
+                  );
+              if (ctx.mounted) {
+                Navigator.pop(ctx);
+                if (!ok && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Failed to add table'),
+                      backgroundColor: AppColors.error));
+                }
+              }
+            },
+            child: const Text('Add Table'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditTableDialog(BuildContext context, RestaurantTable table) {
+    final numCtrl = TextEditingController(text: table.tableNumber);
+    final sectionCtrl = TextEditingController(text: table.section);
+    final descCtrl = TextEditingController(text: table.description ?? '');
+    int capacity = table.capacity;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Edit Table ${table.tableNumber}',
+            style:
+                GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 18)),
+        content: StatefulBuilder(
+          builder: (ctx, setLocal) => SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _FormField(controller: numCtrl, label: 'Table Number'),
+                const SizedBox(height: 12),
+                _FormField(
+                    controller: sectionCtrl, label: 'Floor / Section'),
+                const SizedBox(height: 12),
+                _FormField(
+                    controller: descCtrl,
+                    label: 'Description',
+                    maxLines: 2),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Text('Capacity',
+                        style: GoogleFonts.outfit(
+                            color: AppColors.textSecondary, fontSize: 14)),
+                    const Spacer(),
+                    _CircleIconBtn(
+                        icon: Icons.remove,
+                        onTap: () =>
+                            setLocal(() => capacity > 1 ? capacity-- : null)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text('$capacity',
+                          style: GoogleFonts.outfit(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primary)),
+                    ),
+                    _CircleIconBtn(
+                        icon: Icons.add,
+                        onTap: () => setLocal(() => capacity++)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () async {
+              if (numCtrl.text.trim().isEmpty) return;
+              final ok = await ref
+                  .read(tableNotifierProvider.notifier)
+                  .editTable(
+                    tableId: table.id,
+                    tableNumber: numCtrl.text.trim(),
+                    section: sectionCtrl.text.trim().isEmpty
+                        ? 'Main'
+                        : sectionCtrl.text.trim(),
+                    capacity: capacity,
+                    description: descCtrl.text.trim().isEmpty
+                        ? null
+                        : descCtrl.text.trim(),
+                  );
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (!ok && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Failed to update table'),
+                    backgroundColor: AppColors.error));
+              }
+            },
+            child: const Text('Save Changes'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteTable(BuildContext context, RestaurantTable table) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Delete Table ${table.tableNumber}?',
+            style: GoogleFonts.outfit(fontWeight: FontWeight.w700)),
+        content: Text(
+            'This will permanently delete Table ${table.tableNumber}. '
+            'This cannot be undone.',
+            style:
+                GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 14)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await ref
+                  .read(tableNotifierProvider.notifier)
+                  .deleteTable(table.id);
+            },
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.error,
+                foregroundColor: Colors.white),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Floor View
+// ═══════════════════════════════════════════════════════════════════════════
+class _FloorView extends StatelessWidget {
+  final List<RestaurantTable> tables;
+  final String selectedSection;
+  final ValueChanged<String> onSectionChanged;
+  final bool canManage;
+  final bool isManager;
+  final ValueChanged<RestaurantTable> onTableTap;
+  final ValueChanged<RestaurantTable>? onTableLongPress;
+
+  const _FloorView({
+    required this.tables,
+    required this.selectedSection,
+    required this.onSectionChanged,
+    required this.canManage,
+    required this.isManager,
+    required this.onTableTap,
+    this.onTableLongPress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final sections = ['All', ...{...tables.map((t) => t.section)}];
+    final filtered = selectedSection == 'All'
+        ? tables
+        : tables.where((t) => t.section == selectedSection).toList();
+
+    final available = tables.where((t) => t.isAvailable).length;
+    final occupied = tables.where((t) => t.isOccupied).length;
+    final reserved = tables.where((t) => t.isReserved).length;
+    final billing = tables.where((t) => t.isReadyForBilling).length;
+    final disabled = tables.where((t) => t.isDisabled).length;
+
+    return Column(
+      children: [
+        // ── Occupancy Summary ──────────────────────────────────────────
+        Container(
+          color: AppColors.surface,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _StatusBadge('Available', available, AppColors.tableAvailable),
+                const SizedBox(width: 8),
+                _StatusBadge('Occupied', occupied, AppColors.tableOccupied),
+                const SizedBox(width: 8),
+                _StatusBadge('Reserved', reserved, AppColors.tableReserved),
+                const SizedBox(width: 8),
+                _StatusBadge('Billing', billing, AppColors.warning),
+                const SizedBox(width: 8),
+                _StatusBadge('Disabled', disabled, AppColors.textHint),
+              ],
+            ),
+          ),
+        ),
+        // ── Section Tabs ───────────────────────────────────────────────
+        if (sections.length > 2)
+          Container(
+            height: 44,
+            color: AppColors.surface,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              itemCount: sections.length,
+              itemBuilder: (ctx, i) {
+                final sec = sections[i];
+                final isSelected = sec == selectedSection;
+                return GestureDetector(
+                  onTap: () => onSectionChanged(sec),
+                  child: AnimatedContainer(
+                    duration: 150.ms,
+                    margin: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppColors.primary
+                          : AppColors.surfaceVariant,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(sec,
+                        style: GoogleFonts.outfit(
+                          fontSize: 12,
+                          color: isSelected
+                              ? Colors.white
+                              : AppColors.textSecondary,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                        )),
+                  ),
+                );
+              },
+            ),
+          ),
+        const Divider(height: 1, color: AppColors.divider),
+        // ── Color Legend ───────────────────────────────────────────────
+        Container(
+          color: AppColors.surface,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _LegendDot('Available', AppColors.tableAvailable),
+                const SizedBox(width: 12),
+                _LegendDot('Occupied', AppColors.tableOccupied),
+                const SizedBox(width: 12),
+                _LegendDot('Reserved', AppColors.tableReserved),
+                const SizedBox(width: 12),
+                _LegendDot('Billing', AppColors.warning),
+                const SizedBox(width: 12),
+                _LegendDot('Disabled', AppColors.textHint),
+              ],
+            ),
+          ),
+        ),
+        const Divider(height: 1, color: AppColors.divider),
+        // ── Tables Grid ────────────────────────────────────────────────
+        Expanded(
+          child: filtered.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.table_restaurant_outlined,
+                          size: 56, color: AppColors.textHint),
+                      const SizedBox(height: 12),
+                      Text('No tables in this section',
+                          style: GoogleFonts.outfit(
+                              color: AppColors.textSecondary, fontSize: 15)),
+                    ],
+                  ),
+                )
+              : GridView.builder(
+                  padding: const EdgeInsets.all(16),
+                  gridDelegate:
+                      const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 180,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 0.88,
+                  ),
+                  itemCount: filtered.length,
+                  itemBuilder: (ctx, i) => _TableCard(
+                    table: filtered[i],
+                    onTap: () => onTableTap(filtered[i]),
+                    onLongPress: onTableLongPress != null
+                        ? () => onTableLongPress!(filtered[i])
+                        : null,
+                  )
+                      .animate()
+                      .fadeIn(delay: Duration(milliseconds: i * 35))
+                      .scale(
+                          begin: const Offset(0.92, 0.92),
+                          duration: 200.ms),
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Reservations Tab
+// ═══════════════════════════════════════════════════════════════════════════
+class _ReservationsTab extends ConsumerStatefulWidget {
+  final bool canManage;
+  const _ReservationsTab({required this.canManage});
+
+  @override
+  ConsumerState<_ReservationsTab> createState() => _ReservationsTabState();
+}
+
+class _ReservationsTabState extends ConsumerState<_ReservationsTab> {
+  String _filter = 'today'; // today | upcoming | all
+
+  @override
+  Widget build(BuildContext context) {
+    final reservationsAsync = ref.watch(reservationsStreamProvider);
+
+    return Column(
+      children: [
+        // ── Filter Bar ─────────────────────────────────────────────────
+        Container(
+          color: AppColors.surface,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
             children: [
-              TextField(
-                controller: numCtrl,
-                decoration: const InputDecoration(labelText: 'Table Number (e.g. A-01)'),
+              Expanded(
+                child: Row(
+                  children: [
+                    _FilterChip('Today', 'today', _filter,
+                        (v) => setState(() => _filter = v)),
+                    const SizedBox(width: 8),
+                    _FilterChip('Upcoming', 'upcoming', _filter,
+                        (v) => setState(() => _filter = v)),
+                    const SizedBox(width: 8),
+                    _FilterChip(
+                        'All', 'all', _filter, (v) => setState(() => _filter = v)),
+                  ],
+                ),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: sectionCtrl,
-                decoration: const InputDecoration(labelText: 'Section'),
+              if (widget.canManage)
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Book', style: TextStyle(fontSize: 13)),
+                  onPressed: () => _showAddReservationDialog(context),
+                ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: reservationsAsync.when(
+            loading: () => const Center(
+                child: CircularProgressIndicator(color: AppColors.primary)),
+            error: (e, _) => Center(
+                child: Text('Error: $e',
+                    style: const TextStyle(color: AppColors.error))),
+            data: (reservations) {
+              final filtered = reservations.where((r) {
+                if (_filter == 'today') return r.isToday && !r.isCancelled;
+                if (_filter == 'upcoming') return r.isUpcoming;
+                return true;
+              }).toList();
+
+              if (filtered.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.event_busy_rounded,
+                          size: 56, color: AppColors.textHint),
+                      const SizedBox(height: 12),
+                      Text('No reservations',
+                          style: GoogleFonts.outfit(
+                              color: AppColors.textSecondary, fontSize: 15)),
+                      const SizedBox(height: 6),
+                      Text(
+                          _filter == 'today'
+                              ? 'No reservations for today'
+                              : 'No upcoming reservations',
+                          style: GoogleFonts.outfit(
+                              color: AppColors.textHint, fontSize: 12)),
+                    ],
+                  ),
+                );
+              }
+
+              return ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: filtered.length,
+                itemBuilder: (ctx, i) => _ReservationCard(
+                  reservation: filtered[i],
+                  canManage: widget.canManage,
+                  onEdit: () =>
+                      _showEditReservationDialog(context, filtered[i]),
+                  onCancel: () => _confirmCancel(context, filtered[i]),
+                  onNoShow: () async {
+                    await ref
+                        .read(reservationNotifierProvider.notifier)
+                        .markNoShow(filtered[i].id);
+                  },
+                  onSeat: () => _seatReservation(context, filtered[i]),
+                ).animate().fadeIn(delay: Duration(milliseconds: i * 40)),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _seatReservation(BuildContext context, TableReservation reservation) {
+    final tablesAsync = ref.read(tablesStreamProvider);
+    final availableTables = tablesAsync.value
+            ?.where((t) => t.isAvailable)
+            .toList() ??
+        [];
+
+    if (availableTables.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No available tables to seat the guest.'),
+          backgroundColor: AppColors.error));
+      return;
+    }
+
+    String? selectedId;
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20)),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Seat ${reservation.customerName}',
+                  style: GoogleFonts.outfit(fontWeight: FontWeight.w700)),
+              Text('${reservation.guestCount} guests',
+                  style: GoogleFonts.outfit(
+                      fontSize: 12, color: AppColors.textSecondary)),
+            ],
+          ),
+          content: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: availableTables.map((t) {
+              final isSelected = t.id == selectedId;
+              return GestureDetector(
+                onTap: () => setLocal(() => selectedId = t.id),
+                child: AnimatedContainer(
+                  duration: 150.ms,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? AppColors.primary
+                        : AppColors.surfaceVariant,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(t.tableNumber,
+                          style: GoogleFonts.outfit(
+                              fontWeight: FontWeight.w700,
+                              color: isSelected
+                                  ? Colors.white
+                                  : AppColors.textPrimary)),
+                      Text('Cap: ${t.capacity}',
+                          style: GoogleFonts.outfit(
+                              fontSize: 10,
+                              color: isSelected
+                                  ? Colors.white70
+                                  : AppColors.textHint)),
+                    ],
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: selectedId == null
+                  ? null
+                  : () async {
+                      Navigator.pop(ctx);
+                      // Mark reservation as seated
+                      await ref
+                          .read(reservationNotifierProvider.notifier)
+                          .updateReservation(
+                            id: reservation.id,
+                            customerName: reservation.customerName,
+                            customerPhone: reservation.customerPhone,
+                            guestCount: reservation.guestCount,
+                            reservationTime: reservation.reservationTime,
+                            status: 'seated',
+                          );
+                      // Open table session
+                      if (context.mounted) {
+                        final session = await ref
+                            .read(tableNotifierProvider.notifier)
+                            .openSession(selectedId!,
+                                guestCount: reservation.guestCount,
+                                notes:
+                                    'Reservation: ${reservation.customerName}');
+                        if (session != null && context.mounted) {
+                          context.go(
+                              '/tables/$selectedId/order?sessionId=${session.id}');
+                        }
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white),
+              child: const Text('Seat & Open'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAddReservationDialog(BuildContext context) {
+    final nameCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
+    final notesCtrl = TextEditingController();
+    int guestCount = 2;
+    DateTime selectedDate = DateTime.now();
+    TimeOfDay selectedTime =
+        TimeOfDay.fromDateTime(DateTime.now().add(const Duration(hours: 1)));
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20)),
+          title: Text('New Reservation',
+              style:
+                  GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 18)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _FormField(
+                    controller: nameCtrl,
+                    label: 'Customer Name',
+                    hint: 'Full name'),
+                const SizedBox(height: 12),
+                _FormField(
+                    controller: phoneCtrl,
+                    label: 'Phone Number',
+                    hint: '+977-',
+                    keyboardType: TextInputType.phone),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Text('Guests',
+                        style: GoogleFonts.outfit(
+                            color: AppColors.textSecondary, fontSize: 14)),
+                    const Spacer(),
+                    _CircleIconBtn(
+                        icon: Icons.remove,
+                        onTap: () => setLocal(
+                            () => guestCount > 1 ? guestCount-- : null)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text('$guestCount',
+                          style: GoogleFonts.outfit(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primary)),
+                    ),
+                    _CircleIconBtn(
+                        icon: Icons.add,
+                        onTap: () => setLocal(() => guestCount++)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // Date picker
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 46),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12))),
+                  icon: const Icon(Icons.calendar_today_rounded, size: 16),
+                  label: Text(
+                      DateFormat('EEE, MMM d, yyyy').format(selectedDate),
+                      style: GoogleFonts.outfit(fontSize: 14)),
+                  onPressed: () async {
+                    final d = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime.now(),
+                      lastDate:
+                          DateTime.now().add(const Duration(days: 90)),
+                    );
+                    if (d != null) setLocal(() => selectedDate = d);
+                  },
+                ),
+                const SizedBox(height: 8),
+                // Time picker
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 46),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12))),
+                  icon: const Icon(Icons.access_time_rounded, size: 16),
+                  label: Text(selectedTime.format(context),
+                      style: GoogleFonts.outfit(fontSize: 14)),
+                  onPressed: () async {
+                    final t = await showTimePicker(
+                      context: context,
+                      initialTime: selectedTime,
+                    );
+                    if (t != null) setLocal(() => selectedTime = t);
+                  },
+                ),
+                const SizedBox(height: 12),
+                _FormField(
+                    controller: notesCtrl,
+                    label: 'Notes (optional)',
+                    maxLines: 2),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
               ),
-              const SizedBox(height: 12),
+              onPressed: () async {
+                if (nameCtrl.text.trim().isEmpty) return;
+                final dt = DateTime(
+                  selectedDate.year,
+                  selectedDate.month,
+                  selectedDate.day,
+                  selectedTime.hour,
+                  selectedTime.minute,
+                );
+                final ok = await ref
+                    .read(reservationNotifierProvider.notifier)
+                    .addReservation(
+                      customerName: nameCtrl.text.trim(),
+                      customerPhone: phoneCtrl.text.trim().isEmpty
+                          ? null
+                          : phoneCtrl.text.trim(),
+                      guestCount: guestCount,
+                      reservationTime: dt,
+                      notes: notesCtrl.text.trim().isEmpty
+                          ? null
+                          : notesCtrl.text.trim(),
+                    );
+                if (ctx.mounted) Navigator.pop(ctx);
+                if (!ok && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Failed to save reservation'),
+                      backgroundColor: AppColors.error));
+                }
+              },
+              child: const Text('Book Table'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditReservationDialog(
+      BuildContext context, TableReservation reservation) {
+    final nameCtrl =
+        TextEditingController(text: reservation.customerName);
+    final phoneCtrl =
+        TextEditingController(text: reservation.customerPhone ?? '');
+    final notesCtrl =
+        TextEditingController(text: reservation.notes ?? '');
+    int guestCount = reservation.guestCount;
+    DateTime selectedDate = reservation.reservationTime;
+    TimeOfDay selectedTime =
+        TimeOfDay.fromDateTime(reservation.reservationTime);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20)),
+          title: Text('Edit Reservation',
+              style:
+                  GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 18)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _FormField(controller: nameCtrl, label: 'Customer Name'),
+                const SizedBox(height: 12),
+                _FormField(
+                    controller: phoneCtrl,
+                    label: 'Phone',
+                    keyboardType: TextInputType.phone),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Text('Guests',
+                        style: GoogleFonts.outfit(
+                            color: AppColors.textSecondary, fontSize: 14)),
+                    const Spacer(),
+                    _CircleIconBtn(
+                        icon: Icons.remove,
+                        onTap: () => setLocal(
+                            () => guestCount > 1 ? guestCount-- : null)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text('$guestCount',
+                          style: GoogleFonts.outfit(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primary)),
+                    ),
+                    _CircleIconBtn(
+                        icon: Icons.add,
+                        onTap: () => setLocal(() => guestCount++)),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 46),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12))),
+                  icon: const Icon(Icons.calendar_today_rounded, size: 16),
+                  label: Text(
+                      DateFormat('EEE, MMM d, yyyy').format(selectedDate),
+                      style: GoogleFonts.outfit(fontSize: 14)),
+                  onPressed: () async {
+                    final d = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime.now(),
+                      lastDate:
+                          DateTime.now().add(const Duration(days: 90)),
+                    );
+                    if (d != null) setLocal(() => selectedDate = d);
+                  },
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 46),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12))),
+                  icon: const Icon(Icons.access_time_rounded, size: 16),
+                  label: Text(selectedTime.format(context),
+                      style: GoogleFonts.outfit(fontSize: 14)),
+                  onPressed: () async {
+                    final t = await showTimePicker(
+                      context: context,
+                      initialTime: selectedTime,
+                    );
+                    if (t != null) setLocal(() => selectedTime = t);
+                  },
+                ),
+                const SizedBox(height: 12),
+                _FormField(
+                    controller: notesCtrl,
+                    label: 'Notes',
+                    maxLines: 2),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () async {
+                final dt = DateTime(
+                  selectedDate.year,
+                  selectedDate.month,
+                  selectedDate.day,
+                  selectedTime.hour,
+                  selectedTime.minute,
+                );
+                await ref
+                    .read(reservationNotifierProvider.notifier)
+                    .updateReservation(
+                      id: reservation.id,
+                      customerName: nameCtrl.text.trim(),
+                      customerPhone: phoneCtrl.text.trim().isEmpty
+                          ? null
+                          : phoneCtrl.text.trim(),
+                      guestCount: guestCount,
+                      reservationTime: dt,
+                      notes: notesCtrl.text.trim().isEmpty
+                          ? null
+                          : notesCtrl.text.trim(),
+                    );
+                if (ctx.mounted) Navigator.pop(ctx);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _confirmCancel(BuildContext context, TableReservation reservation) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Cancel Reservation?',
+            style: GoogleFonts.outfit(fontWeight: FontWeight.w700)),
+        content: Text(
+            'Cancel the reservation for ${reservation.customerName}?',
+            style: GoogleFonts.outfit(
+                color: AppColors.textSecondary, fontSize: 14)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Keep')),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await ref
+                  .read(reservationNotifierProvider.notifier)
+                  .cancelReservation(reservation.id);
+            },
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.error,
+                foregroundColor: Colors.white),
+            child: const Text('Cancel Reservation'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Table Card Widget
+// ═══════════════════════════════════════════════════════════════════════════
+class _TableCard extends StatelessWidget {
+  final RestaurantTable table;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+
+  const _TableCard(
+      {required this.table, required this.onTap, this.onLongPress});
+
+  Color get _statusColor {
+    if (table.isDisabled) return AppColors.textHint;
+    if (table.isReadyForBilling) return AppColors.warning;
+    if (table.isAvailable) return AppColors.tableAvailable;
+    if (table.isOccupied) return AppColors.tableOccupied;
+    if (table.isReserved) return AppColors.tableReserved;
+    return AppColors.textHint;
+  }
+
+  String get _statusLabel {
+    if (table.isDisabled) return 'DISABLED';
+    if (table.isReadyForBilling) return 'BILLING';
+    if (table.isAvailable) return 'AVAILABLE';
+    if (table.isOccupied) return 'OCCUPIED';
+    if (table.isReserved) return 'RESERVED';
+    return table.status.toUpperCase();
+  }
+
+  IconData get _statusIcon {
+    if (table.isDisabled) return Icons.block_rounded;
+    if (table.isReadyForBilling) return Icons.receipt_long_rounded;
+    if (table.isAvailable) return Icons.table_restaurant_rounded;
+    if (table.isOccupied) return Icons.people_rounded;
+    if (table.isReserved) return Icons.event_available_rounded;
+    return Icons.table_restaurant_rounded;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isBilling = table.isReadyForBilling;
+    final isDisabled = table.isDisabled;
+
+    Widget card = GestureDetector(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: Container(
+        decoration: BoxDecoration(
+          color: isDisabled
+              ? AppColors.surfaceVariant
+              : AppColors.card,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: isDisabled
+                ? AppColors.border
+                : isBilling
+                    ? AppColors.warning
+                    : _statusColor.withValues(alpha: 0.4),
+            width: isBilling ? 2 : 1.5,
+          ),
+          boxShadow: isDisabled
+              ? null
+              : [
+                  BoxShadow(
+                    color: _statusColor.withValues(alpha: 0.08),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Header ─────────────────────────────────────────────
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Capacity:', style: TextStyle(color: AppColors.textSecondary)),
-                  const Spacer(),
-                  IconButton(onPressed: () => setLocal(() { if (capacity > 1) capacity--; }), icon: const Icon(Icons.remove)),
-                  Text(capacity.toString(), style: const TextStyle(fontSize: 18)),
-                  IconButton(onPressed: () => setLocal(() { capacity++; }), icon: const Icon(Icons.add)),
+                  Icon(_statusIcon,
+                      color: isDisabled
+                          ? AppColors.textHint
+                          : _statusColor,
+                      size: 26),
+                  Container(
+                    width: 9,
+                    height: 9,
+                    decoration: BoxDecoration(
+                      color: isDisabled
+                          ? AppColors.textHint
+                          : _statusColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              // ── Table Number ───────────────────────────────────────
+              Text(table.tableNumber,
+                  style: GoogleFonts.outfit(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: isDisabled
+                          ? AppColors.textHint
+                          : AppColors.textPrimary)),
+              Text(table.section,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(
+                      fontSize: 10,
+                      color: AppColors.textHint)),
+              const SizedBox(height: 6),
+              // ── Status Badge ───────────────────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: isDisabled
+                            ? AppColors.textHint.withValues(alpha: 0.1)
+                            : _statusColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _statusLabel,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.outfit(
+                          fontSize: 8,
+                          color: isDisabled
+                              ? AppColors.textHint
+                              : _statusColor,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.people_outline_rounded,
+                          size: 11, color: AppColors.textHint),
+                      const SizedBox(width: 2),
+                      Text('${table.capacity}',
+                          style: GoogleFonts.outfit(
+                              fontSize: 10, color: AppColors.textHint)),
+                    ],
+                  ),
                 ],
               ),
             ],
           ),
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              if (numCtrl.text.trim().isEmpty) return;
-              final scaffoldMessenger = ScaffoldMessenger.of(context);
-              final success = await ref.read(tableNotifierProvider.notifier)
-                  .addTable(numCtrl.text.trim(), sectionCtrl.text.trim(), capacity);
-              if (ctx.mounted) {
-                if (success) {
-                  Navigator.pop(ctx);
-                } else {
-                  final state = ref.read(tableNotifierProvider);
-                  state.whenOrNull(
-                    error: (err, _) => scaffoldMessenger.showSnackBar(
-                      SnackBar(
-                        content: Text('Error: $err'),
-                        backgroundColor: AppColors.error,
-                      ),
-                    ),
-                  );
-                }
-              }
-            },
-            child: const Text('Add'),
-          ),
+      ),
+    );
+
+    if (isBilling) {
+      card = card
+          .animate(onPlay: (c) => c.repeat(reverse: true))
+          .tint(
+              color: AppColors.warning.withValues(alpha: 0.04),
+              duration: 900.ms);
+    }
+
+    return card;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Reservation Card
+// ═══════════════════════════════════════════════════════════════════════════
+class _ReservationCard extends StatelessWidget {
+  final TableReservation reservation;
+  final bool canManage;
+  final VoidCallback onEdit;
+  final VoidCallback onCancel;
+  final VoidCallback onNoShow;
+  final VoidCallback onSeat;
+
+  const _ReservationCard({
+    required this.reservation,
+    required this.canManage,
+    required this.onEdit,
+    required this.onCancel,
+    required this.onNoShow,
+    required this.onSeat,
+  });
+
+  Color get _statusColor {
+    switch (reservation.status) {
+      case 'confirmed':
+        return AppColors.info;
+      case 'seated':
+        return AppColors.success;
+      case 'cancelled':
+        return AppColors.error;
+      case 'no_show':
+        return AppColors.textSecondary;
+      default:
+        return AppColors.warning;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isPast = reservation.reservationTime.isBefore(DateTime.now()) &&
+        !reservation.isSeated;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _statusColor.withValues(alpha: 0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          )
         ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Header ──────────────────────────────────────────────
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: _statusColor.withValues(alpha: 0.12),
+                  child: Text(
+                    reservation.customerName.isNotEmpty
+                        ? reservation.customerName[0].toUpperCase()
+                        : '?',
+                    style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w700,
+                        color: _statusColor,
+                        fontSize: 14),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(reservation.customerName,
+                          style: GoogleFonts.outfit(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                              color: AppColors.textPrimary)),
+                      if (reservation.customerPhone != null)
+                        Text(reservation.customerPhone!,
+                            style: GoogleFonts.outfit(
+                                fontSize: 11,
+                                color: AppColors.textSecondary)),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _statusColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(reservation.status.toUpperCase(),
+                      style: GoogleFonts.outfit(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: _statusColor,
+                          letterSpacing: 0.5)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            // ── Details ──────────────────────────────────────────────
+            Wrap(
+              spacing: 16,
+              children: [
+                _InfoChip(
+                    Icons.schedule_rounded,
+                    DateFormat('hh:mm a').format(reservation.reservationTime),
+                    isPast ? AppColors.error : AppColors.textSecondary),
+                _InfoChip(
+                    Icons.calendar_month_rounded,
+                    DateFormat('MMM d').format(reservation.reservationTime),
+                    AppColors.textSecondary),
+                _InfoChip(Icons.people_outline_rounded,
+                    '${reservation.guestCount} guests', AppColors.textSecondary),
+              ],
+            ),
+            if (reservation.notes != null && reservation.notes!.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(reservation.notes!,
+                  style: GoogleFonts.outfit(
+                      fontSize: 11,
+                      color: AppColors.textHint,
+                      fontStyle: FontStyle.italic)),
+            ],
+            // ── Actions ───────────────────────────────────────────────
+            if (canManage &&
+                !reservation.isCancelled &&
+                !reservation.isNoShow) ...[
+              const SizedBox(height: 10),
+              const Divider(height: 1, color: AppColors.divider),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  if (!reservation.isSeated) ...[
+                    _SmallBtn(
+                        'Seat',
+                        AppColors.success,
+                        Icons.chair_rounded,
+                        onSeat),
+                    const SizedBox(width: 8),
+                    _SmallBtn(
+                        'Edit',
+                        AppColors.info,
+                        Icons.edit_rounded,
+                        onEdit),
+                    const SizedBox(width: 8),
+                    _SmallBtn(
+                        'No Show',
+                        AppColors.textSecondary,
+                        Icons.person_off_rounded,
+                        onNoShow),
+                    const SizedBox(width: 8),
+                    _SmallBtn(
+                        'Cancel',
+                        AppColors.error,
+                        Icons.cancel_rounded,
+                        onCancel),
+                  ] else
+                    Text('✓ Seated',
+                        style: GoogleFonts.outfit(
+                            color: AppColors.success,
+                            fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
 }
 
-class _StatusChip extends StatelessWidget {
+// ═══════════════════════════════════════════════════════════════════════════
+// Helper Widgets
+// ═══════════════════════════════════════════════════════════════════════════
+class _StatusBadge extends StatelessWidget {
   final String label;
   final int count;
   final Color color;
-
-  const _StatusChip(this.label, this.count, this.color);
+  const _StatusBadge(this.label, this.count, this.color);
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-          const SizedBox(width: 6),
-          Text('$count $label', style: GoogleFonts.outfit(fontSize: 12, color: color, fontWeight: FontWeight.w500)),
+          Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          const SizedBox(width: 5),
+          Text('$count $label',
+              style: GoogleFonts.outfit(
+                  fontSize: 11, color: color, fontWeight: FontWeight.w500)),
         ],
       ),
     );
   }
 }
 
-class _TableCard extends StatelessWidget {
-  final RestaurantTable table;
-  final VoidCallback onTap;
-
-  const _TableCard({required this.table, required this.onTap});
-
-  Color get _statusColor {
-    if (table.billRequested) return AppColors.warning;
-    if (table.isAvailable) return AppColors.tableAvailable;
-    if (table.isOccupied) return AppColors.tableOccupied;
-    if (table.isReserved) return AppColors.tableReserved;
-    return AppColors.tableCleaning;
-  }
+class _LegendDot extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _LegendDot(this.label, this.color);
 
   @override
   Widget build(BuildContext context) {
-    final isBillRequested = table.billRequested;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 4),
+        Text(label,
+            style: GoogleFonts.outfit(fontSize: 10, color: AppColors.textHint)),
+      ],
+    );
+  }
+}
 
-    Widget card = Container(
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isBillRequested ? AppColors.warning : _statusColor.withValues(alpha: 0.4),
-          width: isBillRequested ? 2.0 : 1.5,
+class _ActionTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _ActionTile(
+      {required this.icon,
+      required this.label,
+      required this.color,
+      required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      dense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 2),
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(10),
         ),
-        boxShadow: isBillRequested
-            ? [
-                BoxShadow(
-                  color: AppColors.warning.withValues(alpha: 0.25),
-                  blurRadius: 10,
-                  spreadRadius: 1,
-                )
-              ]
-            : null,
+        child: Icon(icon, color: color, size: 18),
       ),
-      child: Stack(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Icon(
-                      isBillRequested ? Icons.receipt_long_rounded : Icons.table_restaurant_rounded,
-                      color: isBillRequested ? AppColors.warning : _statusColor,
-                      size: 28,
-                    ),
-                    Container(
-                      width: 10,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: isBillRequested ? AppColors.warning : _statusColor,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ],
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(table.tableNumber,
-                        style: GoogleFonts.outfit(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                    Text(table.section,
-                        style: GoogleFonts.outfit(fontSize: 11, color: AppColors.textSecondary)),
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: isBillRequested
-                            ? AppColors.warning.withValues(alpha: 0.15)
-                            : _statusColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        isBillRequested ? 'BILL REQUESTED' : table.status.toUpperCase(),
-                        style: GoogleFonts.outfit(
-                          fontSize: 9,
-                          color: isBillRequested ? AppColors.warning : _statusColor,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ).animate(
-                      target: isBillRequested ? 1.0 : 0.0,
-                      onPlay: (c) => c.repeat(reverse: true),
-                    ).fade(duration: 800.ms, begin: 0.5, end: 1.0),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Positioned(
-            top: 12,
-            right: 12,
-            child: Row(
-              children: [
-                const Icon(Icons.people_outline_rounded, size: 12, color: AppColors.textHint),
-                const SizedBox(width: 2),
-                Text('${table.capacity}', style: GoogleFonts.outfit(fontSize: 11, color: AppColors.textHint)),
-              ],
-            ),
-          ),
-        ],
+      title: Text(label,
+          style: GoogleFonts.outfit(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: AppColors.textPrimary)),
+      onTap: onTap,
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final String value;
+  final String selected;
+  final ValueChanged<String> onChanged;
+  const _FilterChip(this.label, this.value, this.selected, this.onChanged);
+
+  @override
+  Widget build(BuildContext context) {
+    final isSelected = value == selected;
+    return GestureDetector(
+      onTap: () => onChanged(value),
+      child: AnimatedContainer(
+        duration: 150.ms,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary : AppColors.surfaceVariant,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(label,
+            style: GoogleFonts.outfit(
+                fontSize: 12,
+                fontWeight:
+                    isSelected ? FontWeight.w600 : FontWeight.w400,
+                color: isSelected ? Colors.white : AppColors.textSecondary)),
       ),
     );
+  }
+}
 
-    if (isBillRequested) {
-      card = card
-          .animate(onPlay: (c) => c.repeat(reverse: true))
-          .tint(color: AppColors.warning.withValues(alpha: 0.04), duration: 1000.ms);
-    }
+class _CircleIconBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _CircleIconBtn({required this.icon, required this.onTap});
 
+  @override
+  Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: card,
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: AppColors.primary.withValues(alpha: 0.1),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: AppColors.primary, size: 18),
+      ),
+    );
+  }
+}
+
+class _FormField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final String? hint;
+  final int maxLines;
+  final TextInputType? keyboardType;
+
+  const _FormField({
+    required this.controller,
+    required this.label,
+    this.hint,
+    this.maxLines = 1,
+    this.keyboardType,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      maxLines: maxLines,
+      keyboardType: keyboardType,
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        border:
+            OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        isDense: true,
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  const _InfoChip(this.icon, this.label, this.color);
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: color),
+        const SizedBox(width: 3),
+        Text(label,
+            style:
+                GoogleFonts.outfit(fontSize: 11, color: color)),
+      ],
+    );
+  }
+}
+
+class _SmallBtn extends StatelessWidget {
+  final String label;
+  final Color color;
+  final IconData icon;
+  final VoidCallback onTap;
+  const _SmallBtn(this.label, this.color, this.icon, this.onTap);
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 4),
+            Text(label,
+                style: GoogleFonts.outfit(
+                    fontSize: 11,
+                    color: color,
+                    fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
     );
   }
 }

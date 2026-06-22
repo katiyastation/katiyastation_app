@@ -306,6 +306,7 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               'created_at': DateTime.now().toIso8601String(),
               'updated_at': DateTime.now().toIso8601String(),
             });
+            ref.invalidate(inventoryProvider);
             if (context.mounted) Navigator.pop(ctx);
           },
           child: const Text('Add'),

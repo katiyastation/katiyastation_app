@@ -7,6 +7,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/supabase_constants.dart';
 import 'package:katiya_station_rms/features/cashier/domain/entities/bill_entities.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../dashboard/presentation/screens/dashboard_screen.dart';
 
 final creditProvider = StreamProvider<List<CreditRecord>>((ref) {
   final supabase = ref.watch(supabaseProvider);
@@ -192,6 +193,8 @@ class _CreditCard extends StatelessWidget {
             'paid_amount': newPaid,
             'status': newStatus,
           }).eq('id', credit.id);
+          ref.invalidate(creditProvider);
+          ref.invalidate(dashboardCreditProvider);
           if (context.mounted) Navigator.pop(ctx);
         }, child: const Text('Confirm')),
       ],
