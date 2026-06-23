@@ -9,6 +9,7 @@ import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/tables_provider.dart';
 import '../../domain/entities/table_entities.dart';
+import '../../../orders/presentation/providers/order_provider.dart';
 
 class TablesScreen extends ConsumerStatefulWidget {
   const TablesScreen({super.key});
@@ -109,7 +110,7 @@ class _TablesScreenState extends ConsumerState<TablesScreen>
               isManager: isManager,
               onTableTap: (t) => _handleTableTap(context, t),
               onTableLongPress: (t) =>
-                  isManager ? _showTableContextMenu(context, t) : null,
+                  canManage ? _showTableContextMenu(context, t) : null,
             ),
           ),
           // ── Reservations Tab ──────────────────────────────────────────
@@ -287,64 +288,166 @@ class _TablesScreenState extends ConsumerState<TablesScreen>
                     fontSize: 12, color: AppColors.textSecondary)),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _ActionTile(
-              icon: Icons.restaurant_menu_rounded,
-              label: 'View / Add Orders',
-              color: AppColors.primary,
-              onTap: () {
-                Navigator.pop(ctx);
-                context.go(
-                    '/tables/${table.id}/order?sessionId=${session.id}');
-              },
+        content: SizedBox(
+          width: 320,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _ActionTile(
+                  icon: Icons.restaurant_menu_rounded,
+                  label: 'View / Add Orders',
+                  color: AppColors.primary,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    context.go(
+                        '/tables/${table.id}/order?sessionId=${session.id}');
+                  },
+                ),
+                // ── Hold / Resume Table session ──────────────────────────────
+                if (session.onHold)
+                  _ActionTile(
+                    icon: Icons.play_circle_outline_rounded,
+                    label: 'Resume Order (Unhold)',
+                    color: AppColors.success,
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      final ok = await ref.read(tableNotifierProvider.notifier).unholdSession(session.id);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(ok ? 'Order resumed!' : 'Failed to resume order'),
+                          backgroundColor: ok ? AppColors.success : AppColors.error,
+                        ));
+                      }
+                    },
+                  )
+                else
+                  _ActionTile(
+                    icon: Icons.pause_circle_outline_rounded,
+                    label: 'Hold Order',
+                    color: AppColors.warning,
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      String? reason;
+                      await showDialog(
+                        context: context,
+                        builder: (holdCtx) {
+                          final ctrl = TextEditingController();
+                          return AlertDialog(
+                            backgroundColor: AppColors.surface,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                            title: Text('Hold Order', style: GoogleFonts.outfit(fontWeight: FontWeight.w700)),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('Enter a reason for holding this order (optional):',
+                                    style: GoogleFonts.outfit(fontSize: 13, color: AppColors.textSecondary)),
+                                const SizedBox(height: 12),
+                                TextField(
+                                  controller: ctrl,
+                                  decoration: InputDecoration(
+                                    hintText: 'e.g. Guests stepped out...',
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(holdCtx), child: const Text('Cancel')),
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.warning,
+                                  foregroundColor: Colors.white,
+                                ),
+                                onPressed: () {
+                                  reason = ctrl.text.trim().isEmpty ? null : ctrl.text.trim();
+                                  Navigator.pop(holdCtx);
+                                },
+                                child: const Text('Hold'),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                      
+                      final ok = await ref
+                          .read(tableNotifierProvider.notifier)
+                          .holdSession(session.id, reason: reason);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(ok ? 'Order placed on hold' : 'Failed to place order on hold'),
+                          backgroundColor: ok ? AppColors.warning : AppColors.error,
+                        ));
+                      }
+                    },
+                  ),
+                _ActionTile(
+                  icon: Icons.receipt_long_rounded,
+                  label: 'Request Bill',
+                  color: AppColors.warning,
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await ref
+                        .read(tableNotifierProvider.notifier)
+                        .requestBill(table.id, session.id);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                          content: Text('Bill requested!'),
+                          backgroundColor: AppColors.warning));
+                    }
+                  },
+                ),
+                _ActionTile(
+                  icon: Icons.swap_horiz_rounded,
+                  label: 'Transfer Table',
+                  color: AppColors.info,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showTransferDialog(context, table, session);
+                  },
+                ),
+                // ── Merge Table ──────────────────────────────────────────────
+                _ActionTile(
+                  icon: Icons.merge_type_rounded,
+                  label: 'Merge Table',
+                  color: AppColors.primary,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showMergeDialog(context, table, session);
+                  },
+                ),
+                // ── Split Table ──────────────────────────────────────────────
+                _ActionTile(
+                  icon: Icons.call_split_rounded,
+                  label: 'Split Table',
+                  color: AppColors.primary,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _showSplitDialog(context, table, session);
+                  },
+                ),
+                _ActionTile(
+                  icon: Icons.point_of_sale_rounded,
+                  label: 'Go to Cashier',
+                  color: AppColors.success,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    context.go(
+                        '/cashier?sessionId=${session.id}&tableId=${table.id}');
+                  },
+                ),
+                _ActionTile(
+                  icon: Icons.close_rounded,
+                  label: 'Close & Free Table',
+                  color: AppColors.error,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _confirmCloseSession(context, table, session);
+                  },
+                ),
+              ],
             ),
-            _ActionTile(
-              icon: Icons.receipt_long_rounded,
-              label: 'Request Bill',
-              color: AppColors.warning,
-              onTap: () async {
-                Navigator.pop(ctx);
-                await ref
-                    .read(tableNotifierProvider.notifier)
-                    .requestBill(table.id, session.id);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text('Bill requested!'),
-                      backgroundColor: AppColors.warning));
-                }
-              },
-            ),
-            _ActionTile(
-              icon: Icons.swap_horiz_rounded,
-              label: 'Transfer Table',
-              color: AppColors.info,
-              onTap: () {
-                Navigator.pop(ctx);
-                _showTransferDialog(context, table, session);
-              },
-            ),
-            _ActionTile(
-              icon: Icons.point_of_sale_rounded,
-              label: 'Go to Cashier',
-              color: AppColors.success,
-              onTap: () {
-                Navigator.pop(ctx);
-                context.go(
-                    '/cashier?sessionId=${session.id}&tableId=${table.id}');
-              },
-            ),
-            _ActionTile(
-              icon: Icons.close_rounded,
-              label: 'Close & Free Table',
-              color: AppColors.error,
-              onTap: () {
-                Navigator.pop(ctx);
-                _confirmCloseSession(context, table, session);
-              },
-            ),
-          ],
+          ),
         ),
         actions: [
           TextButton(
@@ -468,6 +571,272 @@ class _TablesScreenState extends ConsumerState<TablesScreen>
     );
   }
 
+  void _showMergeDialog(
+      BuildContext context, RestaurantTable fromTable, TableSession fromSession) {
+    final tablesAsync = ref.read(tablesStreamProvider);
+    final occupiedTables = tablesAsync.value
+            ?.where((t) => (t.isOccupied || t.isReadyForBilling) && t.id != fromTable.id)
+            .toList() ??
+        [];
+
+    if (occupiedTables.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No active tables to merge into.'),
+          backgroundColor: AppColors.error));
+      return;
+    }
+
+    String? selectedTableId;
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text('Merge Table', style: GoogleFonts.outfit(fontWeight: FontWeight.w700)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Merge Table ${fromTable.tableNumber} into another active table:',
+                style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: occupiedTables.map((t) {
+                  final isSelected = t.id == selectedTableId;
+                  return GestureDetector(
+                    onTap: () => setLocal(() => selectedTableId = t.id),
+                    child: AnimatedContainer(
+                      duration: 150.ms,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isSelected ? AppColors.primary : AppColors.surfaceVariant,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: isSelected ? AppColors.primary : AppColors.border),
+                      ),
+                      child: Text(
+                        t.tableNumber,
+                        style: GoogleFonts.outfit(
+                          fontWeight: FontWeight.w700,
+                          color: isSelected ? Colors.white : AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: selectedTableId == null
+                  ? null
+                  : () async {
+                      Navigator.pop(ctx);
+                      
+                      final targetTable = occupiedTables.firstWhere((t) => t.id == selectedTableId);
+                      final targetSessionId = targetTable.currentSessionId;
+                      if (targetSessionId == null) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                              content: Text('Target table has no active session.'),
+                              backgroundColor: AppColors.error));
+                        }
+                        return;
+                      }
+
+                      final ok = await ref
+                          .read(tableNotifierProvider.notifier)
+                          .mergeSessions(
+                            fromTableId: fromTable.id,
+                            toTableId: selectedTableId!,
+                            fromSessionId: fromSession.id,
+                            toSessionId: targetSessionId,
+                          );
+
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text(ok ? 'Tables merged successfully!' : 'Merge failed'),
+                            backgroundColor: ok ? AppColors.success : AppColors.error));
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white),
+              child: const Text('Merge'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSplitDialog(
+      BuildContext context, RestaurantTable fromTable, TableSession fromSession) {
+    final tablesAsync = ref.read(tablesStreamProvider);
+    final availableTables = tablesAsync.value
+            ?.where((t) => t.isAvailable && t.id != fromTable.id)
+            .toList() ??
+        [];
+
+    if (availableTables.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No available tables to split into.'),
+          backgroundColor: AppColors.error));
+      return;
+    }
+
+    String? selectedDestTableId;
+    List<String> kotIdsToMove = [];
+    int newGuestCount = 1;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Split Table & KOTs', style: GoogleFonts.outfit(fontWeight: FontWeight.w700)),
+        content: Consumer(
+          builder: (context, ref, child) {
+            final kotsAsync = ref.watch(sessionKotsProvider(fromSession.id));
+            return kotsAsync.when(
+              loading: () => const SizedBox(
+                height: 100,
+                child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+              ),
+              error: (e, _) => Text('Error loading KOTs: $e'),
+              data: (kots) {
+                if (kots.isEmpty) {
+                  return const Text('No KOTs sent for this session to split.');
+                }
+                return StatefulBuilder(
+                  builder: (ctx, setLocal) => SizedBox(
+                    width: 320,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Select KOTs to move to the new table:',
+                              style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 13)),
+                          const SizedBox(height: 8),
+                          ...kots.map((kot) {
+                            final isChecked = kotIdsToMove.contains(kot.id);
+                            return CheckboxListTile(
+                              dense: true,
+                              title: Text(kot.kotNumber, style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+                              subtitle: Text(
+                                'Items: ${kot.items.length} · Status: ${kot.status}',
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                              value: isChecked,
+                              onChanged: (val) {
+                                setLocal(() {
+                                  if (val == true) {
+                                    kotIdsToMove.add(kot.id);
+                                  } else {
+                                    kotIdsToMove.remove(kot.id);
+                                  }
+                                });
+                              },
+                            );
+                          }),
+                          const Divider(height: 20),
+                          Text('Select Destination Table:',
+                              style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 13)),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: availableTables.map((t) {
+                              final isSelected = t.id == selectedDestTableId;
+                              return GestureDetector(
+                                onTap: () => setLocal(() => selectedDestTableId = t.id),
+                                child: AnimatedContainer(
+                                  duration: 150.ms,
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? AppColors.primary : AppColors.surfaceVariant,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: isSelected ? AppColors.primary : AppColors.border),
+                                  ),
+                                  child: Text(
+                                    t.tableNumber,
+                                    style: GoogleFonts.outfit(
+                                      fontWeight: FontWeight.w700,
+                                      color: isSelected ? Colors.white : AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          const Divider(height: 20),
+                          Row(
+                            children: [
+                              Text('Guests on new table:',
+                                  style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 13)),
+                              const Spacer(),
+                              IconButton(
+                                icon: const Icon(Icons.remove),
+                                onPressed: () => setLocal(() {
+                                  if (newGuestCount > 1) newGuestCount--;
+                                }),
+                              ),
+                              Text('$newGuestCount',
+                                  style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 16)),
+                              IconButton(
+                                icon: const Icon(Icons.add),
+                                onPressed: () => setLocal(() => newGuestCount++),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              if (selectedDestTableId == null || kotIdsToMove.isEmpty) return;
+              Navigator.pop(ctx);
+              final ok = await ref.read(tableNotifierProvider.notifier).splitSession(
+                    fromTableId: fromTable.id,
+                    toTableId: selectedDestTableId!,
+                    fromSessionId: fromSession.id,
+                    kotIdsToMove: kotIdsToMove,
+                    guestCount: newGuestCount,
+                  );
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(ok ? 'Session split successfully!' : 'Split failed'),
+                  backgroundColor: ok ? AppColors.success : AppColors.error,
+                ));
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Split Table'),
+          ),
+        ],
+      ),
+    );
+  }
+
+
   void _confirmCloseSession(
       BuildContext context, RestaurantTable table, TableSession session) {
     showDialog(
@@ -513,6 +882,10 @@ class _TablesScreenState extends ConsumerState<TablesScreen>
   }
 
   void _showTableContextMenu(BuildContext context, RestaurantTable table) {
+    final isOccupiedOrHasOrders = table.isOccupied ||
+        table.isReadyForBilling ||
+        table.currentSessionId != null;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.surface,
@@ -546,21 +919,34 @@ class _TablesScreenState extends ConsumerState<TablesScreen>
               icon: Icons.edit_rounded,
               label: 'Edit Table',
               color: AppColors.info,
+              enabled: !isOccupiedOrHasOrders,
+              subtitle: isOccupiedOrHasOrders
+                  ? 'Cannot edit occupied tables or tables with active orders'
+                  : null,
               onTap: () {
                 Navigator.pop(ctx);
                 _showEditTableDialog(context, table);
               },
             ),
-            if (table.isEnabled && table.isAvailable)
+            if (table.isEnabled)
               _ActionTile(
                 icon: Icons.block_rounded,
                 label: 'Disable Table',
                 color: AppColors.textSecondary,
+                enabled: !isOccupiedOrHasOrders,
+                subtitle: isOccupiedOrHasOrders
+                    ? 'Cannot disable occupied tables or tables with active orders'
+                    : null,
                 onTap: () async {
                   Navigator.pop(ctx);
-                  await ref
+                  final ok = await ref
                       .read(tableNotifierProvider.notifier)
                       .setTableEnabled(table.id, false);
+                  if (!ok && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Failed to disable table.'),
+                        backgroundColor: AppColors.error));
+                  }
                 },
               ),
             if (!table.isEnabled)
@@ -570,21 +956,29 @@ class _TablesScreenState extends ConsumerState<TablesScreen>
                 color: AppColors.success,
                 onTap: () async {
                   Navigator.pop(ctx);
-                  await ref
+                  final ok = await ref
                       .read(tableNotifierProvider.notifier)
                       .setTableEnabled(table.id, true);
+                  if (!ok && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Failed to enable table.'),
+                        backgroundColor: AppColors.error));
+                  }
                 },
               ),
-            if (table.isAvailable)
-              _ActionTile(
-                icon: Icons.delete_outline_rounded,
-                label: 'Delete Table',
-                color: AppColors.error,
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _confirmDeleteTable(context, table);
-                },
-              ),
+            _ActionTile(
+              icon: Icons.delete_outline_rounded,
+              label: 'Delete Table',
+              color: AppColors.error,
+              enabled: !isOccupiedOrHasOrders,
+              subtitle: isOccupiedOrHasOrders
+                  ? 'Cannot delete occupied tables or tables with active orders'
+                  : null,
+              onTap: () {
+                Navigator.pop(ctx);
+                _confirmDeleteTable(context, table);
+              },
+            ),
           ],
         ),
       ),
@@ -813,9 +1207,14 @@ class _TablesScreenState extends ConsumerState<TablesScreen>
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(ctx);
-              await ref
+              final ok = await ref
                   .read(tableNotifierProvider.notifier)
                   .deleteTable(table.id);
+              if (!ok && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Failed to delete table. Make sure it is not occupied.'),
+                    backgroundColor: AppColors.error));
+              }
             },
             style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.error,
@@ -931,18 +1330,18 @@ class _FloorView extends StatelessWidget {
         Container(
           color: AppColors.surface,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: SingleChildScrollView(
+          child: const SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
                 _LegendDot('Available', AppColors.tableAvailable),
-                const SizedBox(width: 12),
+                SizedBox(width: 12),
                 _LegendDot('Occupied', AppColors.tableOccupied),
-                const SizedBox(width: 12),
+                SizedBox(width: 12),
                 _LegendDot('Reserved', AppColors.tableReserved),
-                const SizedBox(width: 12),
+                SizedBox(width: 12),
                 _LegendDot('Billing', AppColors.warning),
-                const SizedBox(width: 12),
+                SizedBox(width: 12),
                 _LegendDot('Disabled', AppColors.textHint),
               ],
             ),
@@ -1564,7 +1963,7 @@ class _ReservationsTabState extends ConsumerState<_ReservationsTab> {
 // ═══════════════════════════════════════════════════════════════════════════
 // Table Card Widget
 // ═══════════════════════════════════════════════════════════════════════════
-class _TableCard extends StatelessWidget {
+class _TableCard extends ConsumerWidget {
   final RestaurantTable table;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
@@ -1572,8 +1971,9 @@ class _TableCard extends StatelessWidget {
   const _TableCard(
       {required this.table, required this.onTap, this.onLongPress});
 
-  Color get _statusColor {
+  Color _statusColor(bool isOnHold) {
     if (table.isDisabled) return AppColors.textHint;
+    if (isOnHold) return AppColors.warning;
     if (table.isReadyForBilling) return AppColors.warning;
     if (table.isAvailable) return AppColors.tableAvailable;
     if (table.isOccupied) return AppColors.tableOccupied;
@@ -1581,8 +1981,9 @@ class _TableCard extends StatelessWidget {
     return AppColors.textHint;
   }
 
-  String get _statusLabel {
+  String _statusLabel(bool isOnHold) {
     if (table.isDisabled) return 'DISABLED';
+    if (isOnHold) return 'ON HOLD';
     if (table.isReadyForBilling) return 'BILLING';
     if (table.isAvailable) return 'AVAILABLE';
     if (table.isOccupied) return 'OCCUPIED';
@@ -1590,8 +1991,9 @@ class _TableCard extends StatelessWidget {
     return table.status.toUpperCase();
   }
 
-  IconData get _statusIcon {
+  IconData _statusIcon(bool isOnHold) {
     if (table.isDisabled) return Icons.block_rounded;
+    if (isOnHold) return Icons.pause_circle_filled_rounded;
     if (table.isReadyForBilling) return Icons.receipt_long_rounded;
     if (table.isAvailable) return Icons.table_restaurant_rounded;
     if (table.isOccupied) return Icons.people_rounded;
@@ -1600,9 +2002,16 @@ class _TableCard extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sessionsAsync = ref.watch(activeSessionsStreamProvider);
+    final session = sessionsAsync.value?.where((s) => s.tableId == table.id).firstOrNull;
+    final isOnHold = session?.onHold ?? false;
+
     final isBilling = table.isReadyForBilling;
     final isDisabled = table.isDisabled;
+    final color = _statusColor(isOnHold);
+    final label = _statusLabel(isOnHold);
+    final iconData = _statusIcon(isOnHold);
 
     Widget card = GestureDetector(
       onTap: onTap,
@@ -1616,16 +2025,16 @@ class _TableCard extends StatelessWidget {
           border: Border.all(
             color: isDisabled
                 ? AppColors.border
-                : isBilling
+                : (isBilling || isOnHold)
                     ? AppColors.warning
-                    : _statusColor.withValues(alpha: 0.4),
-            width: isBilling ? 2 : 1.5,
+                    : color.withValues(alpha: 0.4),
+            width: (isBilling || isOnHold) ? 2 : 1.5,
           ),
           boxShadow: isDisabled
               ? null
               : [
                   BoxShadow(
-                    color: _statusColor.withValues(alpha: 0.08),
+                    color: color.withValues(alpha: 0.08),
                     blurRadius: 8,
                     offset: const Offset(0, 3),
                   ),
@@ -1640,10 +2049,10 @@ class _TableCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Icon(_statusIcon,
+                  Icon(iconData,
                       color: isDisabled
                           ? AppColors.textHint
-                          : _statusColor,
+                          : color,
                       size: 26),
                   Container(
                     width: 9,
@@ -1651,7 +2060,7 @@ class _TableCard extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: isDisabled
                           ? AppColors.textHint
-                          : _statusColor,
+                          : color,
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -1683,17 +2092,17 @@ class _TableCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: isDisabled
                             ? AppColors.textHint.withValues(alpha: 0.1)
-                            : _statusColor.withValues(alpha: 0.12),
+                            : color.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        _statusLabel,
+                        label,
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.outfit(
                           fontSize: 8,
                           color: isDisabled
                               ? AppColors.textHint
-                              : _statusColor,
+                              : color,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0.4,
                         ),
@@ -1703,7 +2112,7 @@ class _TableCard extends StatelessWidget {
                   const SizedBox(width: 4),
                   Row(
                     children: [
-                      Icon(Icons.people_outline_rounded,
+                      const Icon(Icons.people_outline_rounded,
                           size: 11, color: AppColors.textHint),
                       const SizedBox(width: 2),
                       Text('${table.capacity}',
@@ -1719,7 +2128,7 @@ class _TableCard extends StatelessWidget {
       ),
     );
 
-    if (isBilling) {
+    if (isBilling || isOnHold) {
       card = card
           .animate(onPlay: (c) => c.repeat(reverse: true))
           .tint(
@@ -1729,6 +2138,7 @@ class _TableCard extends StatelessWidget {
 
     return card;
   }
+
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1975,32 +2385,44 @@ class _ActionTile extends StatelessWidget {
   final String label;
   final Color color;
   final VoidCallback onTap;
+  final bool enabled;
+  final String? subtitle;
 
-  const _ActionTile(
-      {required this.icon,
-      required this.label,
-      required this.color,
-      required this.onTap});
+  const _ActionTile({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+    this.enabled = true,
+    this.subtitle,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final displayColor = enabled ? color : AppColors.textHint;
     return ListTile(
       dense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 2),
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
+          color: displayColor.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Icon(icon, color: color, size: 18),
+        child: Icon(icon, color: displayColor, size: 18),
       ),
       title: Text(label,
           style: GoogleFonts.outfit(
               fontSize: 14,
               fontWeight: FontWeight.w500,
-              color: AppColors.textPrimary)),
-      onTap: onTap,
+              color: enabled ? AppColors.textPrimary : AppColors.textSecondary)),
+      subtitle: subtitle != null
+          ? Text(subtitle!,
+              style: GoogleFonts.outfit(
+                  fontSize: 11,
+                  color: AppColors.textHint))
+          : null,
+      onTap: enabled ? onTap : null,
     );
   }
 }

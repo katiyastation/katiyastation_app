@@ -83,7 +83,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
   String _paymentMethod = AppConstants.paymentCash;
   double _discount = 0;
   bool _applyServiceCharge = false;
-  bool _applyVat = true;
+  final bool _applyVat = false;
   final _amountCtrl = TextEditingController();
   final _discountCtrl = TextEditingController(text: '0');
   bool _processing = false;
@@ -264,7 +264,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
                   error: (_, __) => const SizedBox(),
                   data: (tables) {
                     final count =
-                        (tables as List).where((t) => t.isOccupied).length;
+                        (tables as List).where((t) => t.isOccupied || t.isReadyForBilling).length;
                     return Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 2),
@@ -294,7 +294,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
               error: (e, _) => Center(child: Text('Error: $e')),
               data: (tables) {
                 final occupied =
-                    (tables as List).where((t) => t.isOccupied).toList();
+                    (tables as List).where((t) => t.isOccupied || t.isReadyForBilling).toList();
                 if (occupied.isEmpty) {
                   return Center(
                     child: Padding(
@@ -758,7 +758,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                item['menu_item_name'] as String,
+                                (item['menu_item_name'] ?? item['name'] ?? 'Unknown Item') as String,
                                 style: GoogleFonts.outfit(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
@@ -837,19 +837,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
                 : AppColors.textHint,
             onChanged: (v) => setState(() => _applyServiceCharge = v),
           ),
-          const SizedBox(height: 12),
-          Container(height: 1, color: AppColors.border),
-          const SizedBox(height: 12),
-          // VAT toggle
-          _buildToggleRow(
-            icon: Icons.account_balance_rounded,
-            label: 'VAT',
-            sublabel: '13% applicable',
-            value: _applyVat,
-            valueLabel: _applyVat ? '13%' : 'Exempt',
-            valueColor: _applyVat ? const Color(0xFF2980B9) : AppColors.textHint,
-            onChanged: (v) => setState(() => _applyVat = v),
-          ),
+          // VAT toggle removed
           const SizedBox(height: 12),
           Container(height: 1, color: AppColors.border),
           const SizedBox(height: 12),
@@ -1569,10 +1557,16 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
   void _printBill(double total, List items, Map<String, dynamic> data) {
     final subtotal = data['subtotal'] as double;
     final serviceCharge = _applyServiceCharge ? subtotal * 0.1 : 0.0;
-    final afterService = subtotal + serviceCharge - _discount;
-    final vat = _applyVat ? afterService * 0.13 : 0.0;
     final dateStr =
         DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now());
+
+    final tables = ref.read(tablesStreamProvider).value ?? [];
+    final selectedTable = tables.where((t) => t.id == _selectedTableId).firstOrNull;
+    final tableNumber = selectedTable?.tableNumber ?? 'N/A';
+
+    final sessions = ref.read(activeSessionsStreamProvider).value ?? [];
+    final selectedSession = sessions.where((s) => s.id == _selectedSessionId).firstOrNull;
+    final sessionNumber = selectedSession?.sessionNumber ?? (_selectedSessionId != null ? _selectedSessionId!.substring(0, 8) : 'N/A');
 
     showDialog(
       context: context,
@@ -1635,7 +1629,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
                         textAlign: TextAlign.center,
                         style: GoogleFonts.courierPrime(
                             fontSize: 11, color: Colors.black)),
-                    Text('Tel: +977-1-XXXXXXXX | VAT: 123456789',
+                    Text('Tel: +977-1-XXXXXXXX',
                         textAlign: TextAlign.center,
                         style: GoogleFonts.courierPrime(
                             fontSize: 11, color: Colors.black)),
@@ -1645,16 +1639,8 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
                         style: TextStyle(color: Colors.black)),
                     const SizedBox(height: 4),
                     _receiptRow('Date:', dateStr),
-                    _receiptRow(
-                        'Table:',
-                        _selectedTableId != null
-                            ? _selectedTableId!.substring(0, 8)
-                            : 'N/A'),
-                    _receiptRow(
-                        'Session:',
-                        _selectedSessionId != null
-                            ? _selectedSessionId!.substring(0, 8)
-                            : 'N/A'),
+                    _receiptRow('Table:', tableNumber),
+                    _receiptRow('Session:', sessionNumber),
                     const SizedBox(height: 4),
                     const Text(
                         '- - - - - - - - - - - - - - - - - - - - -',
@@ -1696,8 +1682,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
                           fmt.format(serviceCharge)),
                     if (_discount > 0)
                       _receiptRow('Discount:', '-${fmt.format(_discount)}'),
-                    if (_applyVat)
-                      _receiptRow('VAT (13%):', fmt.format(vat)),
+                    // VAT section removed
                     const SizedBox(height: 4),
                     const Text(
                         '- - - - - - - - - - - - - - - - - - - - -',

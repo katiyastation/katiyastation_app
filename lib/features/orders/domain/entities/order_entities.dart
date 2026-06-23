@@ -93,3 +93,35 @@ class KotItem extends Equatable {
   @override
   List<Object?> get props => [id, kotId, menuItemId, quantity, unitPrice];
 }
+
+class KotWithItems extends Equatable {
+  final String id;
+  final String branchId;
+  final String sessionId;
+  final String tableId;
+  final String kotNumber;
+  final String status;
+  final String? waiterId;
+  final String? waiterName;
+  final List<Map<String, dynamic>> items;
+  final DateTime createdAt;
+  final String? notes;
+
+  const KotWithItems({
+    required this.id,
+    required this.branchId,
+    required this.sessionId,
+    required this.tableId,
+    required this.kotNumber,
+    required this.status,
+    this.waiterId,
+    this.waiterName,
+    required this.items,
+    required this.createdAt,
+    this.notes,
+  });
+
+  @override
+  List<Object?> get props => [id, kotNumber, status, sessionId, items];
+}
+

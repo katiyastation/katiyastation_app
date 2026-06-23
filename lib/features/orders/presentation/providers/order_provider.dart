@@ -36,7 +36,7 @@ final menuItemsProvider = StreamProvider.family<List<MenuItem>, String>((ref, ca
 });
 
 // KOTs for a session
-final sessionKotsProvider = StreamProvider.family<List<Kot>, String>((ref, sessionId) {
+final sessionKotsProvider = StreamProvider.family<List<KotWithItems>, String>((ref, sessionId) {
   final supabase = ref.watch(supabaseProvider);
   if (sessionId.isEmpty) return const Stream.empty();
   return supabase
@@ -44,25 +44,31 @@ final sessionKotsProvider = StreamProvider.family<List<Kot>, String>((ref, sessi
       .stream(primaryKey: ['id'])
       .eq('session_id', sessionId)
       .order('created_at')
-      .map((rows) => rows
-          .map((r) {
-            // items are joined separately
-            return Kot(
-              id: r['id'] as String,
-              branchId: r['branch_id'] as String,
-              sessionId: r['session_id'] as String,
-              tableId: r['table_id'] as String,
-              kotNumber: r['kot_number'] as String,
-              status: r['status'] as String? ?? 'pending',
-              waiterId: r['waiter_id'] as String?,
-              waiterName: r['waiter_name'] as String?,
-              items: const [],
-              createdAt: DateTime.parse(r['created_at'] as String),
-              notes: r['notes'] as String?,
-            );
-          })
-          .toList());
+      .asyncMap((rows) async {
+        final list = <KotWithItems>[];
+        for (final r in rows) {
+          final items = await supabase
+              .from(SupabaseConstants.kotItems)
+              .select()
+              .eq('kot_id', r['id'] as String);
+          list.add(KotWithItems(
+            id: r['id'] as String,
+            branchId: r['branch_id'] as String,
+            sessionId: r['session_id'] as String,
+            tableId: r['table_id'] as String,
+            kotNumber: r['kot_number'] as String,
+            status: r['status'] as String? ?? 'pending',
+            waiterId: r['waiter_id'] as String?,
+            waiterName: r['waiter_name'] as String?,
+            items: List<Map<String, dynamic>>.from(items),
+            createdAt: DateTime.parse(r['created_at'] as String),
+            notes: r['notes'] as String?,
+          ));
+        }
+        return list;
+      });
 });
+
 
 // Cart state for current order
 class CartItem {
@@ -154,6 +160,7 @@ class OrderNotifier extends StateNotifier<List<CartItem>> {
         'kot_id': kotId,
         'menu_item_id': cartItem.item.id,
         'name': cartItem.item.name,
+        'menu_item_name': cartItem.item.name,
         'quantity': cartItem.quantity,
         'unit_price': cartItem.item.price,
         'note': cartItem.notes,

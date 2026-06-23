@@ -142,6 +142,8 @@ class TableSession extends Equatable {
   final bool billRequested;
   final DateTime? billRequestedAt;
   final String? notes;
+  final bool onHold;
+  final String? holdReason;
 
   const TableSession({
     required this.id,
@@ -159,6 +161,8 @@ class TableSession extends Equatable {
     this.billRequested = false,
     this.billRequestedAt,
     this.notes,
+    this.onHold = false,
+    this.holdReason,
   });
 
   factory TableSession.fromJson(Map<String, dynamic> json) {
@@ -182,6 +186,8 @@ class TableSession extends Equatable {
           ? DateTime.parse(json['bill_requested_at'] as String)
           : null,
       notes: json['notes'] as String?,
+      onHold: json['on_hold'] as bool? ?? false,
+      holdReason: json['hold_reason'] as String?,
     );
   }
 
@@ -207,6 +213,7 @@ class TableSession extends Equatable {
         billRequested,
         billRequestedAt,
         guestCount,
+        onHold,
       ];
 }
 
