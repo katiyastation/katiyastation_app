@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../tables/presentation/providers/tables_provider.dart';
@@ -142,6 +143,31 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
   Widget build(BuildContext context) {
     final profile = ref.watch(authNotifierProvider).value;
     final tablesAsync = ref.watch(tablesStreamProvider);
+    final isMobile = context.isMobile;
+
+    final workspace = Expanded(
+      child: _selectedSessionId == null || _selectedSessionId!.isEmpty
+          ? _noSessionView(context, isMobile: isMobile)
+          : ref.watch(_sessionBillingProvider(_selectedSessionId!)).when(
+                loading: () => const Center(
+                  child: CircularProgressIndicator(color: AppColors.primary),
+                ),
+                error: (e, _) => Center(child: Text('Error: $e')),
+                data: (data) => _buildBillingView(data, profile, isMobile: isMobile),
+              ),
+    );
+
+    if (isMobile) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF0F2F5),
+        appBar: _buildAppBar(showDrawerIcon: true),
+        drawer: Drawer(
+          width: 280,
+          child: SafeArea(child: _buildTablesSidebar(tablesAsync)),
+        ),
+        body: workspace,
+      );
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF0F2F5),
@@ -152,17 +178,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
           // ── Left sidebar ──────────────────────────────────────────────
           _buildTablesSidebar(tablesAsync),
           // ── Right workspace ───────────────────────────────────────────
-          Expanded(
-            child: _selectedSessionId == null || _selectedSessionId!.isEmpty
-                ? _noSessionView(context)
-                : ref.watch(_sessionBillingProvider(_selectedSessionId!)).when(
-                      loading: () => const Center(
-                        child: CircularProgressIndicator(color: AppColors.primary),
-                      ),
-                      error: (e, _) => Center(child: Text('Error: $e')),
-                      data: (data) => _buildBillingView(data, profile),
-                    ),
-          ),
+          workspace,
         ],
       ),
     );
@@ -171,24 +187,32 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
   // ─────────────────────────────────────────────────────────
   //  APP BAR
   // ─────────────────────────────────────────────────────────
-  PreferredSizeWidget _buildAppBar() {
+  PreferredSizeWidget _buildAppBar({bool showDrawerIcon = false}) {
     return AppBar(
       backgroundColor: AppColors.surface,
       elevation: 0,
       shadowColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
-      leading: IconButton(
-        icon: Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF0F2F5),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: const Icon(Icons.arrow_back_rounded,
-              color: AppColors.textPrimary, size: 18),
-        ),
-        onPressed: () => context.go('/tables'),
-      ),
+      leading: showDrawerIcon
+          ? Builder(
+              builder: (ctx) => IconButton(
+                icon: const Icon(Icons.menu_rounded, color: AppColors.textPrimary),
+                onPressed: () => Scaffold.of(ctx).openDrawer(),
+                tooltip: 'Select Table',
+              ),
+            )
+          : IconButton(
+              icon: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0F2F5),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.arrow_back_rounded,
+                    color: AppColors.textPrimary, size: 18),
+              ),
+              onPressed: () => context.go('/tables'),
+            ),
       title: Row(
         children: [
           Container(
@@ -236,6 +260,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
   Widget _buildTablesSidebar(AsyncValue tablesAsync) {
     return Container(
       width: 260,
+      constraints: const BoxConstraints(maxWidth: 280),
       decoration: const BoxDecoration(
         color: AppColors.surface,
         border: Border(right: BorderSide(color: AppColors.border)),
@@ -342,10 +367,13 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
                     final isReq = t.billRequested;
 
                     return InkWell(
-                      onTap: () => setState(() {
-                        _selectedTableId = t.id;
-                        _selectedSessionId = t.currentSessionId;
-                      }),
+                      onTap: () {
+                        setState(() {
+                          _selectedTableId = t.id;
+                          _selectedSessionId = t.currentSessionId;
+                        });
+                        if (context.isMobile) Navigator.of(ctx).pop();
+                      },
                       borderRadius: BorderRadius.circular(10),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
@@ -463,46 +491,67 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
   // ─────────────────────────────────────────────────────────
   //  NO SESSION VIEW
   // ─────────────────────────────────────────────────────────
-  Widget _noSessionView(BuildContext context) {
+  Widget _noSessionView(BuildContext context, {bool isMobile = false}) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            width: 100,
-            height: 100,
+            padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               color: AppColors.primary.withValues(alpha: 0.06),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.point_of_sale_outlined,
-                size: 48, color: AppColors.primary),
-          ).animate().scale(duration: 400.ms, curve: Curves.easeOut),
-          const SizedBox(height: 24),
+            child: const Icon(
+              Icons.point_of_sale_rounded,
+              size: 56,
+              color: AppColors.primary,
+            ),
+          ).animate().scale(duration: 400.ms, curve: Curves.easeOutBack),
+          const SizedBox(height: 20),
           Text(
-            'Select a Table to Begin',
+            'Cashier Station',
             style: GoogleFonts.outfit(
               fontSize: 22,
               fontWeight: FontWeight.w700,
               color: AppColors.textPrimary,
             ),
-          ).animate().fadeIn(delay: 100.ms),
+          ).animate().fadeIn(delay: 100.ms).slideY(begin: 0.3),
           const SizedBox(height: 8),
           Text(
-            'Choose an occupied table from the sidebar\nto load the billing workspace.',
+            isMobile
+                ? 'Tap the ☰ menu icon to select an active table.'
+                : 'Choose an occupied table from the sidebar\nto load the billing workspace.',
             textAlign: TextAlign.center,
             style: GoogleFonts.outfit(
                 fontSize: 14, color: AppColors.textSecondary, height: 1.6),
           ).animate().fadeIn(delay: 200.ms),
+          if (isMobile) ...[
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.table_restaurant_rounded, size: 18),
+              label: const Text('Select Table'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: () => Scaffold.of(context).openDrawer(),
+            ).animate().fadeIn(delay: 300.ms),
+          ],
         ],
       ),
     );
   }
 
+
   // ─────────────────────────────────────────────────────────
   //  BILLING VIEW
   // ─────────────────────────────────────────────────────────
-  Widget _buildBillingView(Map<String, dynamic> data, dynamic profile) {
+  Widget _buildBillingView(Map<String, dynamic> data, dynamic profile,
+      {bool isMobile = false}) {
     final items = data['items'] as List<Map<String, dynamic>>;
     final subtotal = data['subtotal'] as double;
     final serviceCharge = _applyServiceCharge ? subtotal * 0.1 : 0.0;
@@ -511,6 +560,29 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
     final total = afterService + vat;
     final amountPaid = double.tryParse(_amountCtrl.text) ?? 0;
     final change = amountPaid - total;
+
+    // Mobile: single column scroll
+    if (isMobile) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildCustomerSection(),
+            const SizedBox(height: 16),
+            _buildOrderItemsSection(items),
+            const SizedBox(height: 16),
+            _buildAdjustmentsSection(subtotal),
+            const SizedBox(height: 16),
+            _buildPaymentPanel(
+                subtotal, serviceCharge, vat, total, amountPaid, change,
+                items, data, profile,
+                mobileMode: true),
+            const SizedBox(height: 24),
+          ],
+        ),
+      );
+    }
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -997,14 +1069,22 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
     double change,
     List items,
     Map<String, dynamic> data,
-    dynamic profile,
-  ) {
+    dynamic profile, {
+    bool mobileMode = false,
+  }) {
+    final containerDecoration = mobileMode
+        ? BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border),
+          )
+        : const BoxDecoration(
+            color: AppColors.surface,
+            border: Border(left: BorderSide(color: AppColors.border)),
+          );
     return Container(
-      width: 340,
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(left: BorderSide(color: AppColors.border)),
-      ),
+      width: mobileMode ? double.infinity : 340,
+      decoration: containerDecoration,
       child: Column(
         children: [
           // ── Header ─────────────────────────────────────────

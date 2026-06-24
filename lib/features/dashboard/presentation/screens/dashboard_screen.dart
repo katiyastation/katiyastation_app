@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../tables/presentation/providers/tables_provider.dart';
 
@@ -214,19 +215,25 @@ class _ManagerStatsGrid extends ConsumerWidget {
     return AnimatedOpacity(
       opacity: isLoading ? 0.5 : 1.0,
       duration: const Duration(milliseconds: 300),
-      child: GridView.count(
-        crossAxisCount: 2,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 1.8,
-        children: [
-          _StatCard('Today\'s Sales', 'NPR ${fmt.format(todaySales)}', Icons.trending_up_rounded, AppColors.success),
-          _StatCard('Today\'s Expenses', 'NPR ${fmt.format(expenses)}', Icons.money_off_rounded, AppColors.error),
-          _StatCard('Pending KOTs', pendingKots.toString(), Icons.receipt_outlined, AppColors.warning),
-          _StatCard('Credit Outstanding', 'NPR ${fmt.format(creditOutstanding)}', Icons.account_balance_wallet_rounded, AppColors.info),
-        ].animate(interval: 80.ms).fadeIn().slideY(begin: 0.2),
+      child: Builder(
+        builder: (context) {
+          final cols = context.responsiveValue<int>(mobile: 2, tablet: 2, desktop: 4);
+          final ratio = context.responsiveValue<double>(mobile: 1.6, tablet: 1.8, desktop: 2.2);
+          return GridView.count(
+            crossAxisCount: cols,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: ratio,
+            children: [
+              _StatCard('Today\'s Sales', 'NPR ${fmt.format(todaySales)}', Icons.trending_up_rounded, AppColors.success),
+              _StatCard('Today\'s Expenses', 'NPR ${fmt.format(expenses)}', Icons.money_off_rounded, AppColors.error),
+              _StatCard('Pending KOTs', pendingKots.toString(), Icons.receipt_outlined, AppColors.warning),
+              _StatCard('Credit Outstanding', 'NPR ${fmt.format(creditOutstanding)}', Icons.account_balance_wallet_rounded, AppColors.info),
+            ].animate(interval: 80.ms).fadeIn().slideY(begin: 0.2),
+          );
+        },
       ),
     );
   }
@@ -286,11 +293,16 @@ class _QuickActionsGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final actions = _getActions(role, context);
+    final maxExtent = context.responsiveValue<double>(
+      mobile: 140,
+      tablet: 160,
+      desktop: 180,
+    );
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 180,
+      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: maxExtent,
         crossAxisSpacing: 12,
         mainAxisSpacing: 12,
         childAspectRatio: 1.1,
@@ -460,23 +472,29 @@ class _CashierStatsGrid extends ConsumerWidget {
     return AnimatedOpacity(
       opacity: isLoading ? 0.5 : 1.0,
       duration: const Duration(milliseconds: 300),
-      child: GridView.count(
-        crossAxisCount: 3,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 2.2,
-        children: [
-          _StatCard('Today\'s Sales', 'NPR ${fmt.format(todaySales)}', Icons.point_of_sale_rounded, AppColors.success),
-          _StatCard('Active Tables', occupiedTables.toString(), Icons.table_restaurant_rounded, AppColors.info),
-          _StatCard(
-            'Bill Requests', 
-            billRequests.toString(), 
-            Icons.receipt_long_rounded, 
-            billRequests > 0 ? AppColors.warning : AppColors.textHint,
-          ),
-        ].animate(interval: 80.ms).fadeIn().slideY(begin: 0.2),
+      child: Builder(
+        builder: (context) {
+          final cols = context.responsiveValue<int>(mobile: 1, tablet: 3, desktop: 3);
+          final ratio = context.responsiveValue<double>(mobile: 3.0, tablet: 2.2, desktop: 2.4);
+          return GridView.count(
+            crossAxisCount: cols,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: ratio,
+            children: [
+              _StatCard('Today\'s Sales', 'NPR ${fmt.format(todaySales)}', Icons.point_of_sale_rounded, AppColors.success),
+              _StatCard('Active Tables', occupiedTables.toString(), Icons.table_restaurant_rounded, AppColors.info),
+              _StatCard(
+                'Bill Requests',
+                billRequests.toString(),
+                Icons.receipt_long_rounded,
+                billRequests > 0 ? AppColors.warning : AppColors.textHint,
+              ),
+            ].animate(interval: 80.ms).fadeIn().slideY(begin: 0.2),
+          );
+        },
       ),
     );
   }

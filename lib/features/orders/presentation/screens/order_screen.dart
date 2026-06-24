@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/order_provider.dart';
 import '../../domain/entities/order_entities.dart';
@@ -59,6 +60,8 @@ class _OrderScreenState extends ConsumerState<OrderScreen>
     final currentSession = sessionsAsync.value?.where((s) => s.id == widget.sessionId).firstOrNull;
     final isOnHold = currentSession?.onHold ?? false;
 
+    final isMobile = context.isMobile;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -93,6 +96,13 @@ class _OrderScreenState extends ConsumerState<OrderScreen>
                 ),
                 onPressed: () => _handleHoldToggle(isOnHold),
               ),
+            ),
+          // ── KOT History icon (mobile only) ──────────────────────────────
+          if (isMobile)
+            IconButton(
+              icon: const Icon(Icons.receipt_rounded),
+              tooltip: 'KOT History',
+              onPressed: () => _showKotHistorySheet(context),
             ),
           // ── Request Bill / Bill Status / Settle ─────────────────────────
           if (widget.sessionId.isNotEmpty) ...[
@@ -149,179 +159,587 @@ class _OrderScreenState extends ConsumerState<OrderScreen>
           ],
         ],
       ),
-      body: Row(
-        children: [
-          // ── Left: Menu browser ──────────────────────────────────────────
-          Expanded(
-            flex: 7,
-            child: Column(
-              children: [
-                // Hold banner
-                if (isOnHold)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    color: AppColors.warning.withValues(alpha: 0.15),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.pause_circle_filled_rounded, color: AppColors.warning, size: 18),
-                        const SizedBox(width: 8),
-                        Text('Order is on HOLD — tap Resume to continue',
-                            style: GoogleFonts.outfit(color: AppColors.warning, fontWeight: FontWeight.w600, fontSize: 13)),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: () => _handleHoldToggle(true),
-                          child: const Text('Resume', style: TextStyle(color: AppColors.warning)),
+      // ── Mobile layout: full-screen menu + FAB cart button ───────────────
+      body: isMobile
+          ? _buildMobileMenuBody(
+              cart: cart,
+              cartNotifier: cartNotifier,
+              categoriesAsync: categoriesAsync,
+              isOnHold: isOnHold,
+              profile: profile,
+              subtotal: subtotal,
+              total: total,
+            )
+          : _buildDesktopBody(
+              cart: cart,
+              cartNotifier: cartNotifier,
+              categoriesAsync: categoriesAsync,
+              isOnHold: isOnHold,
+              subtotal: subtotal,
+              tax: tax,
+              total: total,
+              profile: profile,
+            ),
+      // ── Cart FAB (mobile only) ───────────────────────────────────────────
+      floatingActionButton: isMobile
+          ? FloatingActionButton.extended(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              onPressed: () => _showCartSheet(context, cart, cartNotifier, subtotal, total, profile),
+              icon: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  const Icon(Icons.shopping_cart_rounded),
+                  if (cart.isNotEmpty)
+                    Positioned(
+                      top: -6,
+                      right: -6,
+                      child: Container(
+                        width: 16,
+                        height: 16,
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
                         ),
-                      ],
+                        alignment: Alignment.center,
+                        child: Text(
+                          '${cart.length}',
+                          style: GoogleFonts.outfit(
+                              fontSize: 9,
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w800),
+                        ),
+                      ),
                     ),
-                  ).animate().slideY(begin: -0.5, duration: 300.ms),
-                // Categories tab bar
-                categoriesAsync.when(
-                  loading: () => const SizedBox(height: 56, child: Center(child: LinearProgressIndicator())),
-                  error: (e, _) => Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text('Error loading menu: $e', style: const TextStyle(color: AppColors.error)),
-                  ),
-                  data: (categories) {
-                    if (_selectedCategoryId == null && categories.isNotEmpty) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (mounted) setState(() => _selectedCategoryId = categories.first.id);
-                      });
-                    }
-                    return Container(
-                      height: 56,
-                      color: AppColors.surface,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        itemCount: categories.length,
-                        itemBuilder: (ctx, i) {
-                          final cat = categories[i];
-                          final isSelected = cat.id == _selectedCategoryId;
-                          return GestureDetector(
-                            onTap: () => setState(() => _selectedCategoryId = cat.id),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 150),
-                              margin: const EdgeInsets.only(right: 8),
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
-                              decoration: BoxDecoration(
-                                color: isSelected ? AppColors.primary : AppColors.surfaceVariant,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              alignment: Alignment.center,
-                              child: Text(cat.name,
-                                  style: GoogleFonts.outfit(
-                                    fontSize: 13,
-                                    color: isSelected ? AppColors.onPrimary : AppColors.textSecondary,
-                                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                                  )),
-                            ),
-                          );
-                        },
-                      ),
-                    );
-                  },
-                ),
-                const Divider(height: 1),
-                // Menu grid
-                Expanded(
-                  child: _selectedCategoryId == null
-                      ? const Center(child: Text('Select a category', style: TextStyle(color: AppColors.textSecondary)))
-                      : _MenuItemsGrid(
-                          categoryId: _selectedCategoryId!,
-                          onAdd: (item) => cartNotifier.addItem(item),
-                          cart: cart,
-                        ),
-                ),
-              ],
-            ),
-          ),
-          // ── Right: Cart + KOT History ───────────────────────────────────
+                ],
+              ),
+              label: Text(
+                cart.isEmpty
+                    ? 'Cart'
+                    : 'NPR ${fmt.format(total)}',
+                style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 14),
+              ),
+            )
+          : null,
+    );
+  }
+
+  /// Mobile: full-screen menu browser
+  Widget _buildMobileMenuBody({
+    required List<CartItem> cart,
+    required OrderNotifier cartNotifier,
+    required AsyncValue categoriesAsync,
+    required bool isOnHold,
+    required dynamic profile,
+    required double subtotal,
+    required double total,
+  }) {
+    return Column(
+      children: [
+        if (isOnHold)
           Container(
-            width: 320,
-            decoration: const BoxDecoration(
-              color: AppColors.surface,
-              border: Border(left: BorderSide(color: AppColors.border)),
-            ),
-            child: Column(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: AppColors.warning.withValues(alpha: 0.15),
+            child: Row(
               children: [
-                // Tab bar: Cart | KOT History
-                Container(
-                  decoration: const BoxDecoration(
-                    border: Border(bottom: BorderSide(color: AppColors.border)),
-                  ),
-                  child: TabBar(
-                    controller: _rightPanelTab,
-                    labelStyle: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 13),
-                    unselectedLabelStyle: GoogleFonts.outfit(fontWeight: FontWeight.w400, fontSize: 13),
-                    labelColor: AppColors.primary,
-                    unselectedLabelColor: AppColors.textSecondary,
-                    indicatorColor: AppColors.primary,
-                    tabs: [
-                      Tab(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.shopping_cart_rounded, size: 16),
-                            const SizedBox(width: 6),
-                            const Text('Cart'),
-                            if (cart.isNotEmpty) ...[
-                              const SizedBox(width: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text('${cart.length}',
-                                    style: GoogleFonts.outfit(fontSize: 10, color: Colors.white, fontWeight: FontWeight.w700)),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      const Tab(
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.receipt_rounded, size: 16),
-                            SizedBox(width: 6),
-                            Text('KOT History'),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Tab view
+                const Icon(Icons.pause_circle_filled_rounded, color: AppColors.warning, size: 18),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: TabBarView(
-                    controller: _rightPanelTab,
-                    children: [
-                      // ── Cart Tab ──────────────────────────────────────
-                      _CartTab(
-                        cart: cart,
-                        cartNotifier: cartNotifier,
-                        fmt: fmt,
-                        subtotal: subtotal,
-                        tax: tax,
-                        total: total,
-                        onSendKot: () => _sendKot(profile),
-                      ),
-                      // ── KOT History Tab ───────────────────────────────
-                      _KotHistoryTab(
-                        sessionId: widget.sessionId,
-                        tableId: widget.tableId,
-                        fmt: fmt,
-                      ),
-                    ],
-                  ),
+                  child: Text('Order is on HOLD — tap Resume to continue',
+                      style: GoogleFonts.outfit(
+                          color: AppColors.warning, fontWeight: FontWeight.w600, fontSize: 13)),
+                ),
+                TextButton(
+                  onPressed: () => _handleHoldToggle(true),
+                  child: const Text('Resume', style: TextStyle(color: AppColors.warning)),
                 ),
               ],
             ),
+          ).animate().slideY(begin: -0.5, duration: 300.ms),
+        categoriesAsync.when(
+          loading: () =>
+              const SizedBox(height: 56, child: Center(child: LinearProgressIndicator())),
+          error: (e, _) => Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text('Error loading menu: $e',
+                style: const TextStyle(color: AppColors.error)),
           ),
-        ],
+          data: (categories) {
+            if (_selectedCategoryId == null && categories.isNotEmpty) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) setState(() => _selectedCategoryId = categories.first.id);
+              });
+            }
+            return Container(
+              height: 56,
+              color: AppColors.surface,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                itemCount: categories.length,
+                itemBuilder: (ctx, i) {
+                  final cat = categories[i];
+                  final isSelected = cat.id == _selectedCategoryId;
+                  return GestureDetector(
+                    onTap: () => setState(() => _selectedCategoryId = cat.id),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: isSelected ? AppColors.primary : AppColors.surfaceVariant,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(cat.name,
+                          style: GoogleFonts.outfit(
+                            fontSize: 13,
+                            color: isSelected ? AppColors.onPrimary : AppColors.textSecondary,
+                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                          )),
+                    ),
+                  );
+                },
+              ),
+            );
+          },
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: _selectedCategoryId == null
+              ? const Center(
+                  child: Text('Select a category',
+                      style: TextStyle(color: AppColors.textSecondary)))
+              : _MenuItemsGrid(
+                  categoryId: _selectedCategoryId!,
+                  onAdd: (item) => cartNotifier.addItem(item),
+                  cart: cart,
+                ),
+        ),
+        // Bottom padding for FAB
+        const SizedBox(height: 80),
+      ],
+    );
+  }
+
+  /// Desktop/Tablet: side-by-side split layout
+  Widget _buildDesktopBody({
+    required List<CartItem> cart,
+    required OrderNotifier cartNotifier,
+    required AsyncValue categoriesAsync,
+    required bool isOnHold,
+    required double subtotal,
+    required double tax,
+    required double total,
+    required dynamic profile,
+  }) {
+    return Row(
+      children: [
+        // ── Left: Menu browser ──────────────────────────────────────────
+        Expanded(
+          flex: 7,
+          child: Column(
+            children: [
+              // Hold banner
+              if (isOnHold)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  color: AppColors.warning.withValues(alpha: 0.15),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.pause_circle_filled_rounded,
+                          color: AppColors.warning, size: 18),
+                      const SizedBox(width: 8),
+                      Text('Order is on HOLD — tap Resume to continue',
+                          style: GoogleFonts.outfit(
+                              color: AppColors.warning,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13)),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () => _handleHoldToggle(true),
+                        child: const Text('Resume',
+                            style: TextStyle(color: AppColors.warning)),
+                      ),
+                    ],
+                  ),
+                ).animate().slideY(begin: -0.5, duration: 300.ms),
+              // Categories tab bar
+              categoriesAsync.when(
+                loading: () => const SizedBox(
+                    height: 56,
+                    child: Center(child: LinearProgressIndicator())),
+                error: (e, _) => Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text('Error loading menu: $e',
+                      style: const TextStyle(color: AppColors.error)),
+                ),
+                data: (categories) {
+                  if (_selectedCategoryId == null && categories.isNotEmpty) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) {
+                        setState(() => _selectedCategoryId = categories.first.id);
+                      }
+                    });
+                  }
+                  return Container(
+                    height: 56,
+                    color: AppColors.surface,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      itemCount: categories.length,
+                      itemBuilder: (ctx, i) {
+                        final cat = categories[i];
+                        final isSelected = cat.id == _selectedCategoryId;
+                        return GestureDetector(
+                          onTap: () =>
+                              setState(() => _selectedCategoryId = cat.id),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            margin: const EdgeInsets.only(right: 8),
+                            padding:
+                                const EdgeInsets.symmetric(horizontal: 16),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? AppColors.primary
+                                  : AppColors.surfaceVariant,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(cat.name,
+                                style: GoogleFonts.outfit(
+                                  fontSize: 13,
+                                  color: isSelected
+                                      ? AppColors.onPrimary
+                                      : AppColors.textSecondary,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w600
+                                      : FontWeight.w400,
+                                )),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
+              const Divider(height: 1),
+              // Menu grid
+              Expanded(
+                child: _selectedCategoryId == null
+                    ? const Center(
+                        child: Text('Select a category',
+                            style:
+                                TextStyle(color: AppColors.textSecondary)))
+                    : _MenuItemsGrid(
+                        categoryId: _selectedCategoryId!,
+                        onAdd: (item) => cartNotifier.addItem(item),
+                        cart: cart,
+                      ),
+              ),
+            ],
+          ),
+        ),
+        // ── Right: Cart + KOT History ───────────────────────────────────
+        Container(
+          width: 320,
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            border: Border(left: BorderSide(color: AppColors.border)),
+          ),
+          child: Column(
+            children: [
+              // Tab bar: Cart | KOT History
+              Container(
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: AppColors.border)),
+                ),
+                child: TabBar(
+                  controller: _rightPanelTab,
+                  labelStyle:
+                      GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 13),
+                  unselectedLabelStyle:
+                      GoogleFonts.outfit(fontWeight: FontWeight.w400, fontSize: 13),
+                  labelColor: AppColors.primary,
+                  unselectedLabelColor: AppColors.textSecondary,
+                  indicatorColor: AppColors.primary,
+                  tabs: [
+                    Tab(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.shopping_cart_rounded, size: 16),
+                          const SizedBox(width: 6),
+                          const Text('Cart'),
+                          if (cart.isNotEmpty) ...[
+                            const SizedBox(width: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text('${cart.length}',
+                                  style: GoogleFonts.outfit(
+                                      fontSize: 10,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700)),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const Tab(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.receipt_rounded, size: 16),
+                          SizedBox(width: 6),
+                          Text('KOT History'),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Tab view
+              Expanded(
+                child: TabBarView(
+                  controller: _rightPanelTab,
+                  children: [
+                    // ── Cart Tab ──────────────────────────────────────
+                    _CartTab(
+                      cart: cart,
+                      cartNotifier: cartNotifier,
+                      fmt: fmt,
+                      subtotal: subtotal,
+                      tax: tax,
+                      total: total,
+                      onSendKot: () => _sendKot(profile),
+                    ),
+                    // ── KOT History Tab ───────────────────────────────
+                    _KotHistoryTab(
+                      sessionId: widget.sessionId,
+                      tableId: widget.tableId,
+                      fmt: fmt,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Show cart as a DraggableScrollableSheet on mobile
+  void _showCartSheet(
+    BuildContext context,
+    List<CartItem> cart,
+    OrderNotifier cartNotifier,
+    double subtotal,
+    double total,
+    dynamic profile,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.92,
+        builder: (ctx, scrollCtrl) => Container(
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 8),
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Text('Cart',
+                        style: GoogleFonts.outfit(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary)),
+                    if (cart.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text('${cart.length}',
+                            style: GoogleFonts.outfit(
+                                fontSize: 12,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700)),
+                      ),
+                    ],
+                    const Spacer(),
+                    if (cart.isNotEmpty)
+                      TextButton(
+                        onPressed: () {
+                          cartNotifier.clearCart();
+                          Navigator.pop(ctx);
+                        },
+                        child: const Text('Clear All',
+                            style: TextStyle(
+                                color: AppColors.error, fontSize: 12)),
+                      ),
+                  ],
+                ),
+              ),
+              const Divider(),
+              Expanded(
+                child: cart.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.add_shopping_cart_rounded,
+                                size: 48, color: AppColors.textHint),
+                            const SizedBox(height: 12),
+                            Text('Add items from the menu',
+                                style: GoogleFonts.outfit(
+                                    color: AppColors.textHint, fontSize: 13)),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        controller: scrollCtrl,
+                        padding: const EdgeInsets.all(12),
+                        itemCount: cart.length,
+                        itemBuilder: (ctx, i) => _CartItemTile(
+                          cartItem: cart[i],
+                          onIncrease: () =>
+                              cartNotifier.increaseQty(cart[i].item.id),
+                          onDecrease: () =>
+                              cartNotifier.decreaseQty(cart[i].item.id),
+                          onRemove: () =>
+                              cartNotifier.removeItem(cart[i].item.id),
+                          fmt: fmt,
+                        ).animate().fadeIn(
+                            delay: Duration(milliseconds: i * 30)),
+                      ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: const BoxDecoration(
+                  border: Border(top: BorderSide(color: AppColors.border)),
+                ),
+                child: Column(
+                  children: [
+                    _SummaryRow('Subtotal', 'NPR ${fmt.format(subtotal)}'),
+                    const Divider(height: 16),
+                    _SummaryRow('Total', 'NPR ${fmt.format(total)}',
+                        isBold: true),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.send_rounded, size: 18),
+                        label: const Text('Send KOT to Kitchen'),
+                        onPressed: cart.isEmpty
+                            ? null
+                            : () async {
+                                Navigator.pop(ctx);
+                                await _sendKot(profile);
+                              },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Show KOT history as bottom sheet on mobile
+  void _showKotHistorySheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        builder: (ctx, scrollCtrl) => Container(
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 8),
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Row(
+                  children: [
+                    Text('KOT History',
+                        style: GoogleFonts.outfit(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary)),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: _KotHistoryTab(
+                  sessionId: widget.sessionId,
+                  tableId: widget.tableId,
+                  fmt: fmt,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -857,8 +1275,8 @@ class _MenuItemsGrid extends ConsumerWidget {
           ? const Center(child: Text('No items in this category', style: TextStyle(color: AppColors.textSecondary)))
           : GridView.builder(
               padding: const EdgeInsets.all(14),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 180,
+              gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: context.isMobile ? 140 : 180,
                 crossAxisSpacing: 10,
                 mainAxisSpacing: 10,
                 childAspectRatio: 1.1,

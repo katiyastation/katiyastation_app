@@ -1364,28 +1364,33 @@ class _FloorView extends StatelessWidget {
                     ],
                   ),
                 )
-              : GridView.builder(
-                  padding: const EdgeInsets.all(16),
-                  gridDelegate:
-                      const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 180,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 0.88,
-                  ),
-                  itemCount: filtered.length,
-                  itemBuilder: (ctx, i) => _TableCard(
-                    table: filtered[i],
-                    onTap: () => onTableTap(filtered[i]),
-                    onLongPress: onTableLongPress != null
-                        ? () => onTableLongPress!(filtered[i])
-                        : null,
-                  )
-                      .animate()
-                      .fadeIn(delay: Duration(milliseconds: i * 35))
-                      .scale(
-                          begin: const Offset(0.92, 0.92),
-                          duration: 200.ms),
+              : LayoutBuilder(
+                  builder: (ctx, constraints) {
+                    final isNarrow = constraints.maxWidth < 600;
+                    return GridView.builder(
+                      padding: const EdgeInsets.all(16),
+                      gridDelegate:
+                          SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: isNarrow ? 160 : 180,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        childAspectRatio: isNarrow ? 0.95 : 0.88,
+                      ),
+                      itemCount: filtered.length,
+                      itemBuilder: (ctx, i) => _TableCard(
+                        table: filtered[i],
+                        onTap: () => onTableTap(filtered[i]),
+                        onLongPress: onTableLongPress != null
+                            ? () => onTableLongPress!(filtered[i])
+                            : null,
+                      )
+                          .animate()
+                          .fadeIn(delay: Duration(milliseconds: i * 35))
+                          .scale(
+                              begin: const Offset(0.92, 0.92),
+                              duration: 200.ms),
+                    );
+                  },
                 ),
         ),
       ],

@@ -1,0 +1,34 @@
+import 'package:flutter/material.dart';
+import 'package:responsive_framework/responsive_framework.dart';
+
+/// Extension on [BuildContext] for responsive layout helpers.
+extension ResponsiveContext on BuildContext {
+  /// True when width is 0–599 px (phone).
+  bool get isMobile => ResponsiveBreakpoints.of(this).isMobile;
+
+  /// True when width is 600–899 px (tablet).
+  bool get isTablet => ResponsiveBreakpoints.of(this).isTablet;
+
+  /// True when width is 900+ px (desktop / large screen).
+  bool get isDesktop => ResponsiveBreakpoints.of(this).isDesktop;
+
+  /// True when width is 600+ px (tablet or desktop).
+  bool get isTabletOrDesktop =>
+      ResponsiveBreakpoints.of(this).isTablet ||
+      ResponsiveBreakpoints.of(this).isDesktop;
+
+  /// Picks a value based on the current breakpoint.
+  ///
+  /// Falls back: tablet → desktop, mobile → tablet.
+  T responsiveValue<T>({required T mobile, T? tablet, required T desktop}) {
+    if (isDesktop) return desktop;
+    if (isTablet) return tablet ?? desktop;
+    return mobile;
+  }
+
+  /// Screen width shorthand.
+  double get screenWidth => MediaQuery.sizeOf(this).width;
+
+  /// Screen height shorthand.
+  double get screenHeight => MediaQuery.sizeOf(this).height;
+}

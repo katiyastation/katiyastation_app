@@ -39,25 +39,181 @@ class AppShell extends ConsumerWidget {
       );
     }
 
-    // Mobile: bottom nav (limited items)
-    final mobileItems = navItems.take(5).toList();
-    final currentIdx = mobileItems.indexWhere((i) => currentPath.startsWith(i.path));
+    // Mobile / Tablet: bottom nav with "More" overflow
+    const maxVisible = 4;
+    final visibleItems = navItems.length <= maxVisible
+        ? navItems
+        : navItems.take(maxVisible).toList();
+    final overflowItems = navItems.length <= maxVisible
+        ? <NavItem>[]
+        : navItems.skip(maxVisible).toList();
+
+    // Determine selected index; -1 if current path is in overflow
+    int currentIdx = visibleItems
+        .indexWhere((i) => currentPath.startsWith(i.path));
+    final isInOverflow = currentIdx < 0 &&
+        overflowItems.any((i) => currentPath.startsWith(i.path));
+
+    // "More" tab index
+    final moreIndex = overflowItems.isNotEmpty ? visibleItems.length : -1;
+    final selectedIndex = isInOverflow
+        ? moreIndex
+        : (currentIdx < 0 ? 0 : currentIdx);
 
     return Scaffold(
       body: child,
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          border: Border(top: BorderSide(color: AppColors.border)),
-        ),
-        child: BottomNavigationBar(
-          currentIndex: currentIdx < 0 ? 0 : currentIdx,
-          onTap: (i) => context.go(mobileItems[i].path),
-          items: mobileItems.map((item) => BottomNavigationBarItem(
-            icon: Icon(item.icon),
-            activeIcon: Icon(item.activeIcon),
-            label: item.label,
-          )).toList(),
+      bottomNavigationBar: NavigationBar(
+        height: 64,
+        selectedIndex: selectedIndex < 0 ? 0 : selectedIndex,
+        labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+        backgroundColor: AppColors.surface,
+        indicatorColor: AppColors.primary.withValues(alpha: 0.12),
+        onDestinationSelected: (i) {
+          if (overflowItems.isNotEmpty && i == moreIndex) {
+            _showMoreSheet(context, overflowItems, ref);
+          } else if (i < visibleItems.length) {
+            context.go(visibleItems[i].path);
+          }
+        },
+        destinations: [
+          ...visibleItems.map((item) => NavigationDestination(
+                icon: Icon(item.icon, color: AppColors.textSecondary),
+                selectedIcon: Icon(item.activeIcon, color: AppColors.primary),
+                label: item.label,
+              )),
+          if (overflowItems.isNotEmpty)
+            const NavigationDestination(
+              icon: Icon(Icons.more_horiz_rounded,
+                  color: AppColors.textSecondary),
+              selectedIcon: Icon(Icons.more_horiz_rounded,
+                  color: AppColors.primary),
+              label: 'More',
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showMoreSheet(
+      BuildContext context, List<NavItem> items, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text('More',
+                  style: GoogleFonts.outfit(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary)),
+              const SizedBox(height: 12),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 4,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                  childAspectRatio: 0.85,
+                ),
+                itemCount: items.length,
+                itemBuilder: (ctx, i) {
+                  final item = items[i];
+                  final isActive = currentPath.startsWith(item.path);
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      context.go(item.path);
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: isActive
+                            ? AppColors.primary.withValues(alpha: 0.08)
+                            : AppColors.surfaceVariant,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isActive
+                              ? AppColors.primary.withValues(alpha: 0.2)
+                              : Colors.transparent,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(item.icon,
+                              color: isActive
+                                  ? AppColors.primary
+                                  : AppColors.textSecondary,
+                              size: 24),
+                          const SizedBox(height: 6),
+                          Text(
+                            item.label,
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.outfit(
+                              fontSize: 10,
+                              color: isActive
+                                  ? AppColors.primary
+                                  : AppColors.textSecondary,
+                              fontWeight: isActive
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    await ref.read(authNotifierProvider.notifier).signOut();
+                    if (context.mounted) context.go('/login');
+                  },
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.error,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.logout_rounded, size: 18),
+                      const SizedBox(width: 8),
+                      Text('Sign Out',
+                          style: GoogleFonts.outfit(
+                              fontSize: 14, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

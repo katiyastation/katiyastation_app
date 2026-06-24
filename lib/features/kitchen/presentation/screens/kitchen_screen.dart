@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lottie/lottie.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../providers/kitchen_provider.dart';
 import '../../../orders/domain/entities/order_entities.dart';
 import '../../../orders/presentation/providers/order_provider.dart';
@@ -15,6 +16,7 @@ class KitchenScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final kotsAsync = ref.watch(kitchenKotsProvider);
+    final isMobile = context.isMobile;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -81,10 +83,20 @@ class KitchenScreen extends ConsumerWidget {
           final preparing = kots.where((k) => k.isPreparing).toList();
           final ready = kots.where((k) => k.isReady).toList();
 
+          // Mobile: TabBar layout to avoid crushing 3 columns
+          if (isMobile) {
+            return _KitchenTabView(
+              pending: pending,
+              preparing: preparing,
+              ready: ready,
+              ref: ref,
+            );
+          }
+
+          // Tablet/Desktop: 3-column Kanban
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Pending column
               _KanbanColumn(
                 title: 'Pending',
                 icon: Icons.hourglass_empty_rounded,
@@ -94,7 +106,6 @@ class KitchenScreen extends ConsumerWidget {
                 nextLabel: 'Start Preparing',
                 ref: ref,
               ),
-              // Preparing column
               _KanbanColumn(
                 title: 'Preparing',
                 icon: Icons.whatshot_rounded,
@@ -104,7 +115,6 @@ class KitchenScreen extends ConsumerWidget {
                 nextLabel: 'Mark Ready',
                 ref: ref,
               ),
-              // Ready column
               _KanbanColumn(
                 title: 'Ready to Serve',
                 icon: Icons.check_circle_rounded,
@@ -118,6 +128,169 @@ class KitchenScreen extends ConsumerWidget {
           );
         },
       ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Mobile: Tab-based layout
+// ═══════════════════════════════════════════════════════════════════════════
+class _KitchenTabView extends StatefulWidget {
+  final List<Kot> pending;
+  final List<Kot> preparing;
+  final List<Kot> ready;
+  final WidgetRef ref;
+
+  const _KitchenTabView({
+    required this.pending,
+    required this.preparing,
+    required this.ready,
+    required this.ref,
+  });
+
+  @override
+  State<_KitchenTabView> createState() => _KitchenTabViewState();
+}
+
+class _KitchenTabViewState extends State<_KitchenTabView>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Widget _badge(int count, Color color) => count == 0
+      ? const SizedBox.shrink()
+      : Container(
+          margin: const EdgeInsets.only(left: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            '$count',
+            style: GoogleFonts.outfit(
+                fontSize: 10, color: Colors.white, fontWeight: FontWeight.w700),
+          ),
+        );
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          color: AppColors.surface,
+          child: TabBar(
+            controller: _tabController,
+            indicatorColor: AppColors.primary,
+            labelColor: AppColors.primary,
+            unselectedLabelColor: AppColors.textSecondary,
+            labelStyle: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 13),
+            unselectedLabelStyle: GoogleFonts.outfit(fontWeight: FontWeight.w400, fontSize: 13),
+            tabs: [
+              Tab(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.hourglass_empty_rounded, size: 16),
+                    const SizedBox(width: 4),
+                    const Text('Pending'),
+                    _badge(widget.pending.length, AppColors.warning),
+                  ],
+                ),
+              ),
+              Tab(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.whatshot_rounded, size: 16),
+                    const SizedBox(width: 4),
+                    const Text('Preparing'),
+                    _badge(widget.preparing.length, AppColors.info),
+                  ],
+                ),
+              ),
+              Tab(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.check_circle_rounded, size: 16),
+                    const SizedBox(width: 4),
+                    const Text('Ready'),
+                    _badge(widget.ready.length, AppColors.success),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _KotList(kots: widget.pending, nextStatus: 'preparing', nextLabel: 'Start Preparing', color: AppColors.warning, ref: widget.ref),
+              _KotList(kots: widget.preparing, nextStatus: 'ready', nextLabel: 'Mark Ready', color: AppColors.info, ref: widget.ref),
+              _KotList(kots: widget.ready, nextStatus: 'served', nextLabel: 'Mark Served', color: AppColors.success, ref: widget.ref),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _KotList extends StatelessWidget {
+  final List<Kot> kots;
+  final String nextStatus;
+  final String nextLabel;
+  final Color color;
+  final WidgetRef ref;
+
+  const _KotList({
+    required this.kots,
+    required this.nextStatus,
+    required this.nextLabel,
+    required this.color,
+    required this.ref,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (kots.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.check_circle_outline_rounded, size: 52, color: color.withValues(alpha: 0.4)),
+            const SizedBox(height: 12),
+            Text('No orders here', style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 14)),
+          ],
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(12),
+      itemCount: kots.length,
+      itemBuilder: (ctx, i) => _KotCard(
+        kot: kots[i],
+        nextStatus: nextStatus,
+        nextLabel: nextLabel,
+        color: color,
+        ref: ref,
+      ).animate().fadeIn(delay: Duration(milliseconds: i * 50)).slideY(begin: 0.1),
     );
   }
 }
