@@ -12,12 +12,13 @@ import { generateSequenceNumber } from '../../common/utils/sequence.util';
 const KOT_INCLUDE = {
   items: true,
   waiter: { select: { fullName: true } },
+  table: { select: { tableNumber: true } },
 } as const;
 
 /** Flattens the Kot response to match Kot.fromJson in the Flutter client. */
 function toKotResponse(kot: any) {
-  const { waiter, ...rest } = kot;
-  return { ...rest, waiterName: waiter?.fullName ?? null };
+  const { waiter, table, ...rest } = kot;
+  return { ...rest, waiterName: waiter?.fullName ?? null, tableNumber: table?.tableNumber ?? null };
 }
 
 @Injectable()

@@ -6,6 +6,7 @@ import 'package:responsive_framework/responsive_framework.dart';
 import '../constants/app_colors.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../router/app_router.dart';
+import '../network/realtime_sync.dart';
 
 class AppShell extends ConsumerWidget {
   final Widget child;
@@ -15,6 +16,10 @@ class AppShell extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Keeps the Socket.IO -> provider-invalidation bridge alive for the
+    // whole authenticated session so every screen under this shell gets
+    // live updates without a manual refresh.
+    ref.watch(realtimeSyncProvider);
     final profileAsync = ref.watch(authNotifierProvider);
     final profile = profileAsync.value;
     final navItems = getNavItemsForRole(profile?.role);

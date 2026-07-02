@@ -3,13 +3,10 @@
 // Realtime KOT management via Socket.IO + REST API
 // ============================================================
 
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
-import '../../../../core/network/socket_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../orders/domain/entities/order_entities.dart';
 
@@ -49,13 +46,6 @@ final kotItemsProvider =
         .toList();
   }
   return [];
-});
-
-// ── Live KOT stream via Socket.IO ─────────────────────────
-// Used to auto-refresh the kitchen screen on realtime events
-final kitchenSocketStreamProvider = StreamProvider<Map<String, dynamic>>((ref) {
-  final socket = SocketClient.instance;
-  return socket.onKotNew().merge(socket.onKotStatusChanged());
 });
 
 // ── Kitchen Status Notifier ────────────────────────────────
@@ -119,13 +109,3 @@ final kitchenNotifierProvider =
     StateNotifierProvider<KitchenNotifier, AsyncValue<void>>(
   (ref) => KitchenNotifier(ref),
 );
-
-// ── Extension: merge two streams ──────────────────────────
-extension StreamMerge<T> on Stream<T> {
-  Stream<T> merge(Stream<T> other) async* {
-    final controller = StreamController<T>.broadcast();
-    listen(controller.add, onError: controller.addError);
-    other.listen(controller.add, onError: controller.addError);
-    yield* controller.stream;
-  }
-}

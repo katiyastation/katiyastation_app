@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,6 +25,7 @@ import '../features/credit/presentation/screens/credit_screen.dart';
 import '../features/reservation/presentation/screens/reservation_screen.dart';
 import '../features/customers/presentation/screens/customers_screen.dart';
 import '../features/staff/presentation/screens/staff_screen.dart';
+import '../features/users/presentation/screens/users_screen.dart';
 import '../features/attendance/presentation/screens/attendance_screen.dart';
 import '../features/reports/presentation/screens/reports_screen.dart';
 import '../features/settings/presentation/screens/settings_screen.dart';
@@ -82,6 +85,8 @@ const List<NavItem> allNavItems = [
       allowedRoles: ['cashier']),
   NavItem(label: 'Staff', icon: Icons.badge, activeIcon: Icons.badge, path: '/staff',
       allowedRoles: ['branch_manager']),
+  NavItem(label: 'Users', icon: Icons.manage_accounts, activeIcon: Icons.manage_accounts, path: '/users',
+      allowedRoles: ['branch_manager']),
   NavItem(label: 'Attendance', icon: Icons.fingerprint, activeIcon: Icons.fingerprint, path: '/attendance',
       allowedRoles: ['branch_manager', 'cashier', 'waiter', 'kitchen', 'inventory']),
   NavItem(label: 'Reports', icon: Icons.bar_chart, activeIcon: Icons.bar_chart, path: '/reports',
@@ -105,17 +110,53 @@ List<NavItem> getNavItemsForRole(String? role) {
   return allNavItems.where((item) => item.allowedRoles.contains(role)).toList();
 }
 
+/// Bridges a Riverpod [StateNotifier] stream to go_router's
+/// [Listenable]-based refresh mechanism, so the redirect callback re-runs
+/// on auth changes without the [GoRouter] instance itself being rebuilt
+/// (rebuilding it would reset navigation back to [initialLocation] and
+/// blow away whatever page the user was on).
+class GoRouterRefreshStream extends ChangeNotifier {
+  late final StreamSubscription<dynamic> _subscription;
+
+  GoRouterRefreshStream(Stream<dynamic> stream) {
+    _subscription = stream.asBroadcastStream().listen((_) => notifyListeners());
+  }
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
+}
+
 final appRouterProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authNotifierProvider);
+  // Only watch the notifier (a stable instance for the provider's
+  // lifetime), not its state — otherwise every auth state change would
+  // rebuild this whole provider and hand MaterialApp.router a brand-new
+  // GoRouter, resetting navigation to initialLocation on every login,
+  // logout, or session-restore tick.
+  final authNotifier = ref.watch(authNotifierProvider.notifier);
+  final refresh = GoRouterRefreshStream(authNotifier.stream);
+  ref.onDispose(refresh.dispose);
 
   return GoRouter(
     initialLocation: '/',
+    refreshListenable: refresh,
     redirect: (context, state) {
+      final authState = ref.read(authNotifierProvider);
       final isLoggedIn = authState.value != null;
       final isLoginPage = state.matchedLocation == '/login';
       final isSplash = state.matchedLocation == '/';
 
       if (isSplash) return null;
+
+      // Session is still being resolved (app just started, or a hard
+      // refresh landed on a deep route). Hold position instead of
+      // bouncing to /login — once it resolves, this redirect re-runs
+      // via refreshListenable and either lets the user stay put (if
+      // still logged in) or sends them to /login (if not).
+      if (authState.isLoading) return null;
+
       if (!isLoggedIn && !isLoginPage) return '/login';
       if (isLoggedIn) {
         final role = authState.value?.role;
@@ -162,6 +203,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/reservations', builder: (ctx, _) => const ReservationScreen()),
           GoRoute(path: '/customers', builder: (ctx, _) => const CustomersScreen()),
           GoRoute(path: '/staff', builder: (ctx, _) => const StaffScreen()),
+          GoRoute(path: '/users', builder: (ctx, _) => const UsersScreen()),
           GoRoute(path: '/attendance', builder: (ctx, _) => const AttendanceScreen()),
           GoRoute(path: '/reports', builder: (ctx, _) => const ReportsScreen()),
           GoRoute(path: '/settings', builder: (ctx, _) => const SettingsScreen()),

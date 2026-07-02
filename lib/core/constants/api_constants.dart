@@ -40,6 +40,7 @@ class ApiConstants {
   static const String users = '/users';
   static String userById(String id) => '/users/$id';
   static String toggleUserActive(String id) => '/users/$id/toggle-active';
+  static String resetUserPassword(String id) => '/users/$id/reset-password';
 
   // ── Restaurant Tables Endpoints ────────────────────────────
   static const String tables = '/tables';

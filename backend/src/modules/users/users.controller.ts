@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { BranchFilterDto } from '../../common/dto/branch-filter.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator';
@@ -37,5 +38,15 @@ export class UsersController {
   @Patch(':id/toggle-active')
   toggleActive(@Param('id') id: string, @CurrentUser() user: CurrentUserPayload) {
     return this.usersService.toggleActive(id, user);
+  }
+
+  @Roles('super_admin', 'branch_manager')
+  @Patch(':id/reset-password')
+  resetPassword(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: ResetPasswordDto,
+  ) {
+    return this.usersService.resetPassword(id, user, dto);
   }
 }

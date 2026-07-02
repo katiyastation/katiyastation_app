@@ -1,8 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { BranchFilterDto } from '../../common/dto/branch-filter.dto';
 import { buildPaginationMeta } from '../../common/dto/pagination.dto';
 import { CurrentUserPayload } from '../../common/decorators/current-user.decorator';
@@ -136,5 +137,38 @@ export class UsersService {
     });
 
     return toResponse(updated);
+  }
+
+  /**
+   * Admin password reset — no current password required. super_admin may
+   * target any user; branch_manager may only target users in their own
+   * branch (also true for super_admins, whose branchId is null and so
+   * never matches, keeping them out of a manager's reach).
+   */
+  async resetPassword(id: string, currentUser: CurrentUserPayload, dto: ResetPasswordDto) {
+    const target = await this.findOne(id);
+
+    if (currentUser.role !== 'super_admin' && target.branchId !== currentUser.branchId) {
+      throw new ForbiddenException('You can only reset passwords for users in your own branch');
+    }
+
+    const passwordHash = await argon2.hash(dto.newPassword);
+    await this.prisma.user.update({ where: { id }, data: { passwordHash } });
+
+    // Force re-login everywhere, same as a self-service password change.
+    await this.prisma.refreshToken.updateMany({
+      where: { userId: id, revoked: false },
+      data: { revoked: true },
+    });
+
+    await this.auditLogs.record({
+      branchId: target.branchId ?? undefined,
+      userId: currentUser.userId,
+      action: 'password_reset',
+      tableName: 'users',
+      rowId: id,
+    });
+
+    return { success: true };
   }
 }

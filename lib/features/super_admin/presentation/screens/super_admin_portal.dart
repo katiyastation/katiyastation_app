@@ -10,6 +10,7 @@ import 'package:excel/excel.dart' hide Border, BorderStyle;
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/widgets/reset_password_dialog.dart';
 
 final allUsersProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final response = await ApiClient.instance.get(
@@ -150,6 +151,11 @@ class _SuperAdminPortalState extends ConsumerState<SuperAdminPortal>
                       user: filtered[i],
                       onBlock: () => _toggleBlock(filtered[i]),
                       onEdit: () => _showEditUserDialog(context, filtered[i]),
+                      onResetPassword: () => showResetPasswordDialog(
+                        context,
+                        userId: filtered[i]['id'] as String,
+                        userName: filtered[i]['full_name'] as String? ?? 'this user',
+                      ),
                     ).animate().fadeIn(delay: Duration(milliseconds: i * 40)),
                   );
                 },
@@ -440,8 +446,14 @@ class _UserCard extends StatelessWidget {
   final Map<String, dynamic> user;
   final VoidCallback onBlock;
   final VoidCallback onEdit;
+  final VoidCallback onResetPassword;
 
-  const _UserCard({required this.user, required this.onBlock, required this.onEdit});
+  const _UserCard({
+    required this.user,
+    required this.onBlock,
+    required this.onEdit,
+    required this.onResetPassword,
+  });
 
   static const _roleColors = {
     'super_admin': Color(0xFFE040FB),
@@ -556,6 +568,7 @@ class _UserCard extends StatelessWidget {
           onSelected: (s) {
             if (s == 'edit') onEdit();
             if (s == 'block') onBlock();
+            if (s == 'reset_password') onResetPassword();
           },
           itemBuilder: (_) => [
             const PopupMenuItem(
@@ -564,6 +577,13 @@ class _UserCard extends StatelessWidget {
                   Icon(Icons.edit_rounded, size: 16),
                   SizedBox(width: 8),
                   Text('Edit User'),
+                ])),
+            const PopupMenuItem(
+                value: 'reset_password',
+                child: Row(children: [
+                  Icon(Icons.lock_reset_rounded, size: 16),
+                  SizedBox(width: 8),
+                  Text('Reset Password'),
                 ])),
             PopupMenuItem(
               value: 'block',

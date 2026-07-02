@@ -30,8 +30,8 @@ export class TablesService {
     return table;
   }
 
-  create(dto: CreateTableDto) {
-    return this.prisma.restaurantTable.create({
+  async create(dto: CreateTableDto) {
+    const table = await this.prisma.restaurantTable.create({
       data: {
         branchId: dto.branchId,
         tableNumber: dto.tableNumber,
@@ -39,20 +39,21 @@ export class TablesService {
         capacity: dto.capacity ?? 4,
       },
     });
+    this.realtime.tableStatusChanged(table.branchId, table.id, table);
+    return table;
   }
 
   async update(id: string, dto: UpdateTableDto) {
     await this.findOne(id);
     const table = await this.prisma.restaurantTable.update({ where: { id }, data: dto });
-    if (dto.status) {
-      this.realtime.tableStatusChanged(table.branchId, table.id, table);
-    }
+    this.realtime.tableStatusChanged(table.branchId, table.id, table);
     return table;
   }
 
   async remove(id: string) {
-    await this.findOne(id);
+    const table = await this.findOne(id);
     await this.prisma.restaurantTable.delete({ where: { id } });
+    this.realtime.tableStatusChanged(table.branchId, table.id, { ...table, deleted: true });
     return { deleted: true };
   }
 

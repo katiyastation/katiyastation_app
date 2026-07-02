@@ -427,8 +427,9 @@ class _KotCard extends ConsumerWidget {
                 const SizedBox(width: 8),
                 const Icon(Icons.table_restaurant_rounded, size: 13, color: AppColors.textSecondary),
                 const SizedBox(width: 3),
-                Expanded(child: Text(kot.tableId.substring(0, 8),
-                    style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textSecondary),
+                Expanded(child: Text(
+                    kot.tableNumber != null ? 'Table ${kot.tableNumber}' : 'Table —',
+                    style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
                     overflow: TextOverflow.ellipsis)),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

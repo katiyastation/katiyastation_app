@@ -15,7 +15,9 @@ import '../../../dashboard/presentation/screens/dashboard_screen.dart';
 import '../../../payment_history/presentation/screens/payment_history_screen.dart';
 
 // Session billing data provider (KOTs + aggregated items for this session)
-final _sessionBillingProvider =
+// Public (no leading underscore) so realtime_sync.dart can invalidate it
+// when a KOT is added/updated on this session from another device.
+final sessionBillingProvider =
     FutureProvider.family<Map<String, dynamic>, String>((ref, sessionId) async {
   if (sessionId.isEmpty) return {'items': [], 'subtotal': 0.0, 'kots': []};
 
@@ -142,7 +144,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
     final workspace = Expanded(
       child: _selectedSessionId == null || _selectedSessionId!.isEmpty
           ? _noSessionView(context, isMobile: isMobile)
-          : ref.watch(_sessionBillingProvider(_selectedSessionId!)).when(
+          : ref.watch(sessionBillingProvider(_selectedSessionId!)).when(
                 loading: () => const Center(
                   child: CircularProgressIndicator(color: AppColors.primary),
                 ),
