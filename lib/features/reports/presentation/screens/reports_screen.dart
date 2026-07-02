@@ -3,31 +3,32 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
-// ── Real-time report stream providers ──────────────────────────────────────
+// ── Report data providers ───────────────────────────────────────────────────
 
-final _reportBillsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
+final _reportBillsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile?.branchId == null) return const Stream.empty();
-  return supabase
-      .from(SupabaseConstants.bills)
-      .stream(primaryKey: ['id'])
-      .eq('branch_id', profile!.branchId!)
-      .map((rows) => List<Map<String, dynamic>>.from(rows));
+  if (profile?.branchId == null) return [];
+  final response = await ApiClient.instance.get(
+    ApiConstants.bills,
+    queryParameters: {'branchId': profile!.branchId!, 'limit': '100'},
+  );
+  final data = response.data as Map<String, dynamic>;
+  return List<Map<String, dynamic>>.from(data['data'] as List? ?? []);
 });
 
-final _reportExpensesProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
+final _reportExpensesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile?.branchId == null) return const Stream.empty();
-  return supabase
-      .from(SupabaseConstants.expenses)
-      .stream(primaryKey: ['id'])
-      .eq('branch_id', profile!.branchId!)
-      .map((rows) => List<Map<String, dynamic>>.from(rows));
+  if (profile?.branchId == null) return [];
+  final response = await ApiClient.instance.get(
+    ApiConstants.expenses,
+    queryParameters: {'branchId': profile!.branchId!, 'limit': '100'},
+  );
+  final data = response.data as Map<String, dynamic>;
+  return List<Map<String, dynamic>>.from(data['data'] as List? ?? []);
 });
 
 // ────────────────────────────────────────────────────────────────────────────

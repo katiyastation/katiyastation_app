@@ -1,74 +1,66 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:uuid/uuid.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
-import '../../../../core/constants/supabase_constants.dart';
 import '../../../menu/domain/entities/menu_entities.dart';
-import '../../domain/entities/order_entities.dart';
 import '../../../tables/presentation/providers/tables_provider.dart';
 import '../../../dashboard/presentation/screens/dashboard_screen.dart';
+import '../../domain/entities/order_entities.dart';
 
 // Menu categories for ordering (by branchId)
-final menuCategoriesProvider = StreamProvider.family<List<MenuCategory>, String>((ref, branchId) {
-  final supabase = ref.watch(supabaseProvider);
-  return supabase
-      .from(SupabaseConstants.menuCategories)
-      .stream(primaryKey: ['id'])
-      .eq('branch_id', branchId)
-      .order('sort_order')
-      .map((rows) => rows
-          .map((r) => MenuCategory.fromJson(r))
-          .where((c) => c.isActive)
-          .toList());
+final menuCategoriesProvider =
+    FutureProvider.family<List<MenuCategory>, String>((ref, branchId) async {
+  final response = await ApiClient.instance.get(
+    ApiConstants.menuCategories,
+    queryParameters: {'branchId': branchId},
+  );
+  final rows = response.data as List<dynamic>;
+  return rows
+      .map((r) => MenuCategory.fromJson(r as Map<String, dynamic>))
+      .where((c) => c.isActive)
+      .toList()
+    ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 });
 
 // Menu items for ordering (by categoryId)
-final menuItemsProvider = StreamProvider.family<List<MenuItem>, String>((ref, categoryId) {
-  final supabase = ref.watch(supabaseProvider);
-  return supabase
-      .from(SupabaseConstants.menuItems)
-      .stream(primaryKey: ['id'])
-      .eq('category_id', categoryId)
-      .order('name')
-      .map((rows) => rows
-          .map((r) => MenuItem.fromJson(r))
-          .where((i) => i.isAvailable)
-          .toList());
+final menuItemsProvider =
+    FutureProvider.family<List<MenuItem>, String>((ref, categoryId) async {
+  final response = await ApiClient.instance.get(
+    ApiConstants.menuItems,
+    queryParameters: {'categoryId': categoryId},
+  );
+  final rows = response.data as List<dynamic>;
+  return rows
+      .map((r) => MenuItem.fromJson(r as Map<String, dynamic>))
+      .where((i) => i.isAvailable)
+      .toList()
+    ..sort((a, b) => a.name.compareTo(b.name));
 });
 
 // KOTs for a session
-final sessionKotsProvider = StreamProvider.family<List<KotWithItems>, String>((ref, sessionId) {
-  final supabase = ref.watch(supabaseProvider);
-  if (sessionId.isEmpty) return const Stream.empty();
-  return supabase
-      .from(SupabaseConstants.kots)
-      .stream(primaryKey: ['id'])
-      .eq('session_id', sessionId)
-      .order('created_at')
-      .asyncMap((rows) async {
-        final list = <KotWithItems>[];
-        for (final r in rows) {
-          final items = await supabase
-              .from(SupabaseConstants.kotItems)
-              .select()
-              .eq('kot_id', r['id'] as String);
-          list.add(KotWithItems(
-            id: r['id'] as String,
-            branchId: r['branch_id'] as String,
-            sessionId: r['session_id'] as String,
-            tableId: r['table_id'] as String,
-            kotNumber: r['kot_number'] as String,
-            status: r['status'] as String? ?? 'pending',
-            waiterId: r['waiter_id'] as String?,
-            waiterName: r['waiter_name'] as String?,
-            items: List<Map<String, dynamic>>.from(items),
-            createdAt: DateTime.parse(r['created_at'] as String),
-            notes: r['notes'] as String?,
-          ));
-        }
-        return list;
-      });
+final sessionKotsProvider =
+    FutureProvider.family<List<KotWithItems>, String>((ref, sessionId) async {
+  if (sessionId.isEmpty) return [];
+  final response =
+      await ApiClient.instance.get(ApiConstants.kotsBySession(sessionId));
+  final rows = response.data as List<dynamic>;
+  return rows.map((r) {
+    final json = r as Map<String, dynamic>;
+    return KotWithItems(
+      id: json['id'] as String,
+      branchId: json['branch_id'] as String,
+      sessionId: json['session_id'] as String,
+      tableId: json['table_id'] as String? ?? '',
+      kotNumber: json['kot_number'] as String,
+      status: json['status'] as String? ?? 'pending',
+      waiterId: json['waiter_id'] as String?,
+      waiterName: json['waiter_name'] as String?,
+      items: List<Map<String, dynamic>>.from(json['items'] as List? ?? []),
+      createdAt: DateTime.parse(json['created_at'] as String),
+      notes: json['notes'] as String?,
+    );
+  }).toList();
 });
-
 
 // Cart state for current order
 class CartItem {
@@ -127,70 +119,40 @@ class OrderNotifier extends StateNotifier<List<CartItem>> {
     String? notes,
   }) async {
     if (state.isEmpty) return null;
-    final supabase = _ref.read(supabaseProvider);
     final profile = _ref.read(authNotifierProvider).value;
 
-    // Get KOT number
-    final kotCount = await supabase
-        .from(SupabaseConstants.kots)
-        .select('id')
-        .eq('branch_id', branchId);
-    final kotNumber = 'KOT-${(kotCount.length + 1).toString().padLeft(3, '0')}';
-    final kotId = const Uuid().v4();
+    final response = await ApiClient.instance.post(
+      ApiConstants.kots,
+      data: {
+        'sessionId': sessionId,
+        'items': state
+            .map((c) => {
+                  'menuItemId': c.item.id,
+                  'name': c.item.name,
+                  'quantity': c.quantity,
+                  if (c.notes != null) 'note': c.notes,
+                })
+            .toList(),
+      },
+    );
 
-    await supabase.from(SupabaseConstants.kots).insert({
-      'id': kotId,
-      'branch_id': branchId,
-      'session_id': sessionId,
-      'table_id': tableId,
-      'kot_number': kotNumber,
-      'status': 'pending',
-      'waiter_id': profile?.id,
-      'waiter_name': profile?.fullName,
-      'notes': notes,
-      'created_at': DateTime.now().toIso8601String(),
-    });
-
-    // Insert KOT items
-    double newKotSubtotal = 0.0;
-    for (final cartItem in state) {
-      newKotSubtotal += cartItem.item.price * cartItem.quantity;
-      await supabase.from(SupabaseConstants.kotItems).insert({
-        'id': const Uuid().v4(),
-        'kot_id': kotId,
-        'menu_item_id': cartItem.item.id,
-        'name': cartItem.item.name,
-        'menu_item_name': cartItem.item.name,
-        'quantity': cartItem.quantity,
-        'unit_price': cartItem.item.price,
-        'note': cartItem.notes,
-      });
-    }
-
-    // Update session total in database
-    try {
-      final sessionRes = await supabase
-          .from(SupabaseConstants.tableSessions)
-          .select('total_amount')
-          .eq('id', sessionId)
-          .maybeSingle();
-      if (sessionRes != null) {
-        final currentTotal = (sessionRes['total_amount'] as num?)?.toDouble() ?? 0.0;
-        await supabase
-            .from(SupabaseConstants.tableSessions)
-            .update({'total_amount': currentTotal + newKotSubtotal})
-            .eq('id', sessionId);
-      }
-    } catch (_) {}
-
-    // Update session total
-    final kotItems = state.map((c) => KotItem(
-      id: '', kotId: kotId,
-      menuItemId: c.item.id,
-      menuItemName: c.item.name,
-      quantity: c.quantity,
-      unitPrice: c.item.price,
-    )).toList();
+    final json = response.data as Map<String, dynamic>;
+    final rawItems = json['items'] as List? ?? [];
+    final kot = Kot(
+      id: json['id'] as String,
+      branchId: json['branch_id'] as String,
+      sessionId: json['session_id'] as String,
+      tableId: json['table_id'] as String? ?? tableId,
+      kotNumber: json['kot_number'] as String,
+      status: json['status'] as String? ?? 'pending',
+      waiterId: json['waiter_id'] as String? ?? profile?.id,
+      waiterName: json['waiter_name'] as String? ?? profile?.fullName,
+      items: rawItems
+          .map((i) => KotItem.fromJson(i as Map<String, dynamic>))
+          .toList(),
+      createdAt: DateTime.parse(json['created_at'] as String),
+      notes: notes,
+    );
 
     _ref.invalidate(sessionKotsProvider(sessionId));
     _ref.invalidate(tableSessionProvider(tableId));
@@ -198,19 +160,7 @@ class OrderNotifier extends StateNotifier<List<CartItem>> {
     _ref.invalidate(dashboardSessionsProvider);
 
     clearCart();
-    return Kot(
-      id: kotId,
-      branchId: branchId,
-      sessionId: sessionId,
-      tableId: tableId,
-      kotNumber: kotNumber,
-      status: 'pending',
-      waiterId: profile?.id,
-      waiterName: profile?.fullName,
-      items: kotItems,
-      createdAt: DateTime.now(),
-      notes: notes,
-    );
+    return kot;
   }
 }
 

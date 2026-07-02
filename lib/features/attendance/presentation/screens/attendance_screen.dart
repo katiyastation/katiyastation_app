@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 class AttendanceScreen extends ConsumerStatefulWidget {
@@ -16,27 +16,29 @@ class AttendanceScreen extends ConsumerStatefulWidget {
 
 class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   bool _loading = true;
+  String? _staffId;
+  String? _noStaffRecordMessage;
   Map<String, dynamic>? _todayRecord;
 
   @override
   void initState() { super.initState(); _loadTodayRecord(); }
 
   Future<void> _loadTodayRecord() async {
-    final profile = ref.read(authNotifierProvider).value;
-    if (profile == null) return;
-    final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    
     try {
-      final data = await ref.read(supabaseProvider)
-          .from(SupabaseConstants.attendance)
-          .select()
-          .eq('employee_id', profile.id)
-          .gte('check_in', '${todayStr}T00:00:00')
-          .lte('check_in', '${todayStr}T23:59:59')
-          .maybeSingle();
-      if (mounted) setState(() { _todayRecord = data; _loading = false; });
+      final staffResponse = await ApiClient.instance.get(ApiConstants.myStaffRecord);
+      final staff = staffResponse.data as Map<String, dynamic>;
+      _staffId = staff['id'] as String;
+
+      final response = await ApiClient.instance.get(ApiConstants.attendanceToday(_staffId!));
+      if (mounted) setState(() { _todayRecord = response.data as Map<String, dynamic>?; _loading = false; });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _noStaffRecordMessage =
+              'Your account is not linked to a staff record yet. Ask your branch manager to link it.';
+        });
+      }
     }
   }
 
@@ -44,14 +46,23 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   Widget build(BuildContext context) {
     final profile = ref.watch(authNotifierProvider).value;
     final checkedIn = _todayRecord != null;
-    final checkedOut = _todayRecord?['check_out'] != null;
+    final checkedOut = _todayRecord?['clock_out'] != null;
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(title: const Text('Attendance')),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-          : Padding(
+          : _noStaffRecordMessage != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(_noStaffRecordMessage!,
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.outfit(color: AppColors.textSecondary)),
+                  ),
+                )
+              : Padding(
               padding: const EdgeInsets.all(24),
               child: Center(
                 child: ConstrainedBox(
@@ -78,10 +89,10 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        checkedOut 
-                            ? 'See you tomorrow!' 
-                            : (checkedIn 
-                                ? 'Checked in at: ${DateFormat('hh:mm a').format(DateTime.parse(_todayRecord!['check_in']))}' 
+                        checkedOut
+                            ? 'See you tomorrow!'
+                            : (checkedIn
+                                ? 'Checked in at: ${DateFormat('hh:mm a').format(DateTime.parse(_todayRecord!['clock_in']))}'
                                 : 'Press the button below to mark check-in for today'),
                         style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 14),
                         textAlign: TextAlign.center,
@@ -133,24 +144,14 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   }
 
   Future<void> _markAttendance(bool isCheckIn, dynamic profile) async {
-    if (profile == null) return;
+    if (_staffId == null) return;
     setState(() => _loading = true);
-    final supabase = ref.read(supabaseProvider);
 
     try {
       if (isCheckIn) {
-        final id = const Uuid().v4();
-        await supabase.from(SupabaseConstants.attendance).insert({
-          'id': id,
-          'branch_id': profile.branchId,
-          'employee_id': profile.id,
-          'employee_name': profile.fullName,
-          'check_in': DateTime.now().toIso8601String(),
-        });
+        await ApiClient.instance.post(ApiConstants.clockIn(_staffId!));
       } else {
-        await supabase.from(SupabaseConstants.attendance).update({
-          'check_out': DateTime.now().toIso8601String(),
-        }).eq('id', _todayRecord!['id']);
+        await ApiClient.instance.post(ApiConstants.clockOut(_staffId!));
       }
       await _loadTodayRecord();
     } catch (e) {

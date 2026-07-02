@@ -4,9 +4,9 @@ import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:skeletonizer/skeletonizer.dart';
-import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 class StaffScreen extends ConsumerStatefulWidget {
@@ -28,10 +28,15 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
 
   Future<void> _load() async {
     final profile = ref.read(authNotifierProvider).value;
-    if (profile == null) return;
-    final data = await ref.read(supabaseProvider).from(SupabaseConstants.staffMembers)
-        .select().eq('branch_id', profile.branchId ?? '').order('name');
-    if (mounted) setState(() { _staff = List<Map<String, dynamic>>.from(data); _loading = false; });
+    if (profile?.branchId == null) return;
+    final response = await ApiClient.instance.get(
+      ApiConstants.staff,
+      queryParameters: {'branchId': profile!.branchId!},
+    );
+    final data = response.data as Map<String, dynamic>;
+    final rows = List<Map<String, dynamic>>.from(data['data'] as List? ?? []);
+    rows.sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
+    if (mounted) setState(() { _staff = rows; _loading = false; });
   }
 
   @override
@@ -137,16 +142,16 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
         ElevatedButton(onPressed: () async {
           final profile = ref.read(authNotifierProvider).value;
-          await ref.read(supabaseProvider).from(SupabaseConstants.staffMembers).insert({
-            'id': const Uuid().v4(),
-            'branch_id': profile?.branchId,
-            'name': nameCtrl.text.trim(),
-            'phone': phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
-            'role': role,
-            'monthly_salary': double.tryParse(salaryCtrl.text) ?? 0,
-            'is_active': true,
-            'created_at': DateTime.now().toIso8601String(),
-          });
+          await ApiClient.instance.post(
+            ApiConstants.staff,
+            data: {
+              'branchId': profile?.branchId,
+              'name': nameCtrl.text.trim(),
+              'phone': phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
+              'role': role,
+              'salary': double.tryParse(salaryCtrl.text) ?? 0,
+            },
+          );
           if (context.mounted) { Navigator.pop(ctx); _load(); }
         }, child: const Text('Add')),
       ],
@@ -195,7 +200,7 @@ class _StaffCard extends StatelessWidget {
             child: Text(role.toUpperCase(), style: GoogleFonts.outfit(fontSize: 10, color: color, fontWeight: FontWeight.w600)),
           ),
           const SizedBox(height: 4),
-          Text('NPR ${NumberFormat('#,##0').format((staff['monthly_salary'] as num?)?.toInt() ?? 0)}/mo',
+          Text('NPR ${NumberFormat('#,##0').format((staff['salary'] as num?)?.toInt() ?? 0)}/mo',
               style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textSecondary)),
         ]),
       ]),
@@ -210,7 +215,7 @@ class _SalaryView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final total = staff.fold<double>(0, (s, m) => s + ((m['monthly_salary'] as num?)?.toDouble() ?? 0));
+    final total = staff.fold<double>(0, (s, m) => s + ((m['salary'] as num?)?.toDouble() ?? 0));
     return Column(
       children: [
         Container(
@@ -239,7 +244,7 @@ class _SalaryView extends StatelessWidget {
                   decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
                   child: Row(children: [
                     Expanded(child: Text(m['name'] as String, style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary))),
-                    Text('NPR ${NumberFormat('#,##0').format((m['monthly_salary'] as num?)?.toInt() ?? 0)}',
+                    Text('NPR ${NumberFormat('#,##0').format((m['salary'] as num?)?.toInt() ?? 0)}',
                         style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.primary)),
                   ]),
                 );

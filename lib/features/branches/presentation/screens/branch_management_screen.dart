@@ -3,18 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
-final branchesProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
-  return supabase
-      .from(SupabaseConstants.branches)
-      .stream(primaryKey: ['id'])
-      .order('name')
-      .map((rows) => List<Map<String, dynamic>>.from(rows));
+final branchesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  final response = await ApiClient.instance.get(ApiConstants.branches);
+  final rows = response.data as List<dynamic>;
+  final list = List<Map<String, dynamic>>.from(rows);
+  list.sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
+  return list;
 });
 
 class BranchManagementScreen extends ConsumerWidget {
@@ -161,7 +160,6 @@ class BranchManagementScreen extends ConsumerWidget {
             onPressed: () async {
               if (nameCtrl.text.trim().isEmpty) return;
               final messenger = ScaffoldMessenger.of(context);
-              final supabase = ref.read(supabaseProvider);
 
               final payload = {
                 'name': nameCtrl.text.trim(),
@@ -170,30 +168,25 @@ class BranchManagementScreen extends ConsumerWidget {
                     addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
                 'phone': phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
                 'email': emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
-                'tax_reg_number':
+                'taxRegNumber':
                     taxRegCtrl.text.trim().isEmpty ? null : taxRegCtrl.text.trim(),
-                'vat_rate': double.tryParse(vatRateCtrl.text) ?? 13.0,
-                'service_charge_rate':
+                'vatRate': double.tryParse(vatRateCtrl.text) ?? 13.0,
+                'serviceChargeRate':
                     double.tryParse(serviceChargeCtrl.text) ?? 10.0,
               };
 
               try {
                 if (existing != null) {
-                  await supabase
-                      .from(SupabaseConstants.branches)
-                      .update({...payload, 'updated_at': DateTime.now().toIso8601String()})
-                      .eq('id', existing['id'] as String);
+                  await ApiClient.instance.patch(
+                    ApiConstants.branchById(existing['id'] as String),
+                    data: payload,
+                  );
                   messenger.showSnackBar(const SnackBar(
                     content: Text('Branch updated successfully'),
                     backgroundColor: AppColors.success,
                   ));
                 } else {
-                  await supabase.from(SupabaseConstants.branches).insert({
-                    'id': const Uuid().v4(),
-                    ...payload,
-                    'is_active': true,
-                    'created_at': DateTime.now().toIso8601String(),
-                  });
+                  await ApiClient.instance.post(ApiConstants.branches, data: payload);
                   messenger.showSnackBar(const SnackBar(
                     content: Text('Branch added successfully'),
                     backgroundColor: AppColors.success,
@@ -241,7 +234,7 @@ class BranchManagementScreen extends ConsumerWidget {
     if (confirmed != true) return;
 
     try {
-      await ref.read(supabaseProvider).from(SupabaseConstants.branches).delete().eq('id', id);
+      await ApiClient.instance.delete(ApiConstants.branchById(id));
       ref.invalidate(branchesProvider);
       messenger.showSnackBar(const SnackBar(
         content: Text('Branch deleted successfully'),
@@ -258,10 +251,10 @@ class BranchManagementScreen extends ConsumerWidget {
   Future<void> _toggleActive(WidgetRef ref, Map<String, dynamic> branch) async {
     final isActive = branch['is_active'] as bool? ?? true;
     try {
-      await ref.read(supabaseProvider).from(SupabaseConstants.branches).update({
-        'is_active': !isActive,
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', branch['id'] as String);
+      await ApiClient.instance.patch(
+        ApiConstants.branchById(branch['id'] as String),
+        data: {'isActive': !isActive},
+      );
       ref.invalidate(branchesProvider);
     } catch (e) {
       // Quietly log or ignore

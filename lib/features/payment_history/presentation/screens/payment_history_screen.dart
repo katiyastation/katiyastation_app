@@ -4,24 +4,26 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import 'package:katiya_station_rms/features/cashier/domain/entities/bill_entities.dart';
 
-final billsStreamProvider = StreamProvider.family<List<Bill>, DateTimeRange?>((ref, range) {
-  final supabase = ref.watch(supabaseProvider);
+final billsStreamProvider =
+    FutureProvider.family<List<Bill>, DateTimeRange?>((ref, range) async {
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile == null) return const Stream.empty();
-  return supabase
-      .from(SupabaseConstants.bills)
-      .stream(primaryKey: ['id'])
-      .eq('branch_id', profile.branchId ?? '')
-      .order('created_at', ascending: false)
-      .map((rows) => rows.map((r) => Bill.fromJson(r)).where((b) {
-            if (range == null) return true;
-            return b.createdAt.isAfter(range.start) &&
-                b.createdAt.isBefore(range.end.add(const Duration(days: 1)));
-          }).toList());
+  if (profile?.branchId == null) return [];
+  final response = await ApiClient.instance.get(
+    ApiConstants.paymentHistory,
+    queryParameters: {'branchId': profile!.branchId!, 'limit': '100'},
+  );
+  final data = response.data as Map<String, dynamic>;
+  final rows = List<Map<String, dynamic>>.from(data['data'] as List? ?? []);
+  return rows.map((r) => Bill.fromJson(r)).where((b) {
+    if (range == null) return true;
+    return b.createdAt.isAfter(range.start) &&
+        b.createdAt.isBefore(range.end.add(const Duration(days: 1)));
+  }).toList();
 });
 
 class PaymentHistoryScreen extends ConsumerStatefulWidget {

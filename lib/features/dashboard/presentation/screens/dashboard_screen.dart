@@ -6,60 +6,60 @@ import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
-import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/utils/responsive_utils.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../tables/presentation/providers/tables_provider.dart';
 
-// ── Real-time dashboard stat providers ──
-final dashboardBillsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
+// ── Dashboard stat providers ──
+final dashboardBillsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile?.branchId == null) return const Stream.empty();
+  if (profile?.branchId == null) return [];
   final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-  return supabase
-      .from(SupabaseConstants.bills)
-      .stream(primaryKey: ['id'])
-      .eq('branch_id', profile!.branchId!)
-      .map((rows) => rows
-          .where((b) => (b['created_at'] as String? ?? '').startsWith(today))
-          .toList());
+  final response = await ApiClient.instance.get(
+    ApiConstants.bills,
+    queryParameters: {'branchId': profile!.branchId!, 'limit': '100'},
+  );
+  final data = response.data as Map<String, dynamic>;
+  final rows = List<Map<String, dynamic>>.from(data['data'] as List? ?? []);
+  return rows.where((b) => (b['created_at'] as String? ?? '').startsWith(today)).toList();
 });
 
-final dashboardExpensesProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
+final dashboardExpensesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile?.branchId == null) return const Stream.empty();
+  if (profile?.branchId == null) return [];
   final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-  return supabase
-      .from(SupabaseConstants.expenses)
-      .stream(primaryKey: ['id'])
-      .eq('branch_id', profile!.branchId!)
-      .map((rows) => rows
-          .where((e) => (e['created_at'] as String? ?? '').startsWith(today))
-          .toList());
+  final response = await ApiClient.instance.get(
+    ApiConstants.expenses,
+    queryParameters: {'branchId': profile!.branchId!, 'limit': '100'},
+  );
+  final data = response.data as Map<String, dynamic>;
+  final rows = List<Map<String, dynamic>>.from(data['data'] as List? ?? []);
+  return rows.where((e) => (e['created_at'] as String? ?? '').startsWith(today)).toList();
 });
 
-final dashboardKotsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
+final dashboardKotsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile?.branchId == null) return const Stream.empty();
-  return supabase
-      .from(SupabaseConstants.kots)
-      .stream(primaryKey: ['id'])
-      .eq('branch_id', profile!.branchId!)
-      .map((rows) => rows.where((k) => k['status'] == 'pending').toList());
+  if (profile?.branchId == null) return [];
+  final response = await ApiClient.instance.get(
+    ApiConstants.kots,
+    queryParameters: {'branchId': profile!.branchId!, 'status': 'pending', 'limit': '100'},
+  );
+  final rows = response.data as List<dynamic>;
+  return List<Map<String, dynamic>>.from(rows);
 });
 
-final dashboardCreditProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
+final dashboardCreditProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile?.branchId == null) return const Stream.empty();
-  return supabase
-      .from(SupabaseConstants.creditRecords)
-      .stream(primaryKey: ['id'])
-      .eq('branch_id', profile!.branchId!)
-      .map((rows) => rows.where((c) => c['status'] != 'paid').toList());
+  if (profile?.branchId == null) return [];
+  final response = await ApiClient.instance.get(
+    ApiConstants.credits,
+    queryParameters: {'branchId': profile!.branchId!, 'limit': '100'},
+  );
+  final data = response.data as Map<String, dynamic>;
+  final rows = List<Map<String, dynamic>>.from(data['data'] as List? ?? []);
+  return rows.where((c) => c['status'] != 'paid').toList();
 });
 
 class DashboardScreen extends ConsumerWidget {
@@ -428,19 +428,17 @@ class _KitchenQuickNav extends StatelessWidget {
   }
 }
 
-// ── Cashier Real-time Overview Widgets ──
+// ── Cashier Overview Widgets ──
 
-final dashboardSessionsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
+final dashboardSessionsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile?.branchId == null) return const Stream.empty();
-  return supabase
-      .from(SupabaseConstants.tableSessions)
-      .stream(primaryKey: ['id'])
-      .eq('branch_id', profile!.branchId!)
-      .map((rows) => List<Map<String, dynamic>>.from(rows)
-          .where((s) => s['status'] == 'open')
-          .toList());
+  if (profile?.branchId == null) return [];
+  final response = await ApiClient.instance.get(
+    ApiConstants.sessions,
+    queryParameters: {'branchId': profile!.branchId!, 'status': 'open'},
+  );
+  final rows = response.data as List<dynamic>;
+  return List<Map<String, dynamic>>.from(rows);
 });
 
 class _CashierStatsGrid extends ConsumerWidget {

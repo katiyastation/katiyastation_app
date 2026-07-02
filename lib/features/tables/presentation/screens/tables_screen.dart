@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/supabase_constants.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/tables_provider.dart';
 import '../../domain/entities/table_entities.dart';
@@ -135,14 +134,9 @@ class _TablesScreenState extends ConsumerState<TablesScreen>
       await _showOpenSessionDialog(context, table);
     } else if (table.isOccupied || table.isReadyForBilling) {
       // Navigate to existing session
-      final session = await ref.read(supabaseProvider)
-          .from(SupabaseConstants.tableSessions)
-          .select()
-          .eq('table_id', table.id)
-          .eq('status', 'open')
-          .maybeSingle();
+      final session = await ref.read(tableSessionProvider(table.id).future);
       if (session != null && context.mounted) {
-        _showSessionActionsDialog(context, table, TableSession.fromJson(session));
+        _showSessionActionsDialog(context, table, session);
       }
     } else if (table.isReserved) {
       ScaffoldMessenger.of(context).showSnackBar(

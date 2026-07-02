@@ -1,34 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/entities/menu_entities.dart';
-
-final recipeIngredientsProvider = FutureProvider.family<List<Map<String, dynamic>>, String>((ref, menuItemId) async {
-  final supabase = ref.watch(supabaseProvider);
-  
-  // First, get the recipe row
-  final recipe = await supabase
-      .from(SupabaseConstants.recipes)
-      .select()
-      .eq('menu_item_id', menuItemId)
-      .maybeSingle();
-
-  if (recipe == null) return [];
-
-  final recipeId = recipe['id'] as String;
-
-  // Now, fetch all ingredients for this recipe
-  final data = await supabase
-      .from(SupabaseConstants.recipeIngredients)
-      .select('*, inventory_items(name, unit)')
-      .eq('recipe_id', recipeId);
-
-  return List<Map<String, dynamic>>.from(data);
-});
 
 class RecipeDialog extends ConsumerStatefulWidget {
   final MenuItem item;
@@ -65,33 +42,25 @@ class _RecipeDialogState extends ConsumerState<RecipeDialog> {
   Future<void> _loadRecipeAndIngredients() async {
     setState(() => _loading = true);
     try {
-      final supabase = ref.read(supabaseProvider);
       final profile = ref.read(authNotifierProvider).value;
 
       // 1. Fetch all inventory items for branch
-      final invData = await supabase
-          .from(SupabaseConstants.inventoryItems)
-          .select('id, name, unit')
-          .eq('branch_id', profile?.branchId ?? '');
-      _allInventoryItems = List<Map<String, dynamic>>.from(invData);
+      final invResponse = await ApiClient.instance.get(
+        ApiConstants.inventory,
+        queryParameters: {'branchId': profile?.branchId ?? ''},
+      );
+      final invData = invResponse.data as Map<String, dynamic>;
+      _allInventoryItems = List<Map<String, dynamic>>.from(invData['data'] as List? ?? []);
 
       // 2. Fetch recipe
-      final recipe = await supabase
-          .from(SupabaseConstants.recipes)
-          .select()
-          .eq('menu_item_id', widget.item.id)
-          .maybeSingle();
+      final recipeResponse =
+          await ApiClient.instance.get(ApiConstants.menuItemRecipe(widget.item.id));
+      final recipe = recipeResponse.data as Map<String, dynamic>?;
 
       if (recipe != null) {
         _recipeId = recipe['id'] as String;
         _instructionsCtrl.text = recipe['instructions'] as String? ?? '';
-
-        // 3. Fetch ingredients
-        final ingData = await supabase
-            .from(SupabaseConstants.recipeIngredients)
-            .select('*, inventory_items(name, unit)')
-            .eq('recipe_id', _recipeId!);
-        _ingredients = List<Map<String, dynamic>>.from(ingData);
+        _ingredients = List<Map<String, dynamic>>.from(recipe['ingredients'] as List? ?? []);
       }
     } catch (e) {
       debugPrint('Error loading recipe: $e');
@@ -103,20 +72,11 @@ class _RecipeDialogState extends ConsumerState<RecipeDialog> {
   Future<void> _createRecipe() async {
     setState(() => _loading = true);
     try {
-      final supabase = ref.read(supabaseProvider);
-      final profile = ref.read(authNotifierProvider).value;
-      final newId = const Uuid().v4();
-
-      await supabase.from(SupabaseConstants.recipes).insert({
-        'id': newId,
-        'menu_item_id': widget.item.id,
-        'branch_id': profile?.branchId,
-        'instructions': '',
-        'created_at': DateTime.now().toIso8601String(),
-      });
-
+      final response =
+          await ApiClient.instance.post(ApiConstants.menuItemRecipe(widget.item.id));
+      final recipe = response.data as Map<String, dynamic>;
       setState(() {
-        _recipeId = newId;
+        _recipeId = recipe['id'] as String;
       });
     } catch (e) {
       if (mounted) {
@@ -136,14 +96,10 @@ class _RecipeDialogState extends ConsumerState<RecipeDialog> {
 
     setState(() => _loading = true);
     try {
-      final supabase = ref.read(supabaseProvider);
-      await supabase.from(SupabaseConstants.recipeIngredients).insert({
-        'id': const Uuid().v4(),
-        'recipe_id': _recipeId,
-        'inventory_item_id': _selectedInventoryItemId,
-        'quantity': qty,
-        'created_at': DateTime.now().toIso8601String(),
-      });
+      await ApiClient.instance.post(
+        ApiConstants.recipeIngredients(_recipeId!),
+        data: {'inventoryItemId': _selectedInventoryItemId, 'quantity': qty},
+      );
 
       // Clear input
       _qtyCtrl.clear();
@@ -165,8 +121,7 @@ class _RecipeDialogState extends ConsumerState<RecipeDialog> {
   Future<void> _deleteIngredient(String ingredientId) async {
     setState(() => _loading = true);
     try {
-      final supabase = ref.read(supabaseProvider);
-      await supabase.from(SupabaseConstants.recipeIngredients).delete().eq('id', ingredientId);
+      await ApiClient.instance.delete(ApiConstants.recipeIngredientById(ingredientId));
       await _loadRecipeAndIngredients();
     } catch (e) {
       if (mounted) {
@@ -183,10 +138,10 @@ class _RecipeDialogState extends ConsumerState<RecipeDialog> {
     if (_recipeId == null) return;
     setState(() => _loading = true);
     try {
-      final supabase = ref.read(supabaseProvider);
-      await supabase.from(SupabaseConstants.recipes).update({
-        'instructions': _instructionsCtrl.text.trim(),
-      }).eq('id', _recipeId!);
+      await ApiClient.instance.patch(
+        ApiConstants.recipeById(_recipeId!),
+        data: {'instructions': _instructionsCtrl.text.trim()},
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -326,7 +281,7 @@ class _RecipeDialogState extends ConsumerState<RecipeDialog> {
                           itemCount: _ingredients.length,
                           itemBuilder: (ctx, idx) {
                             final ing = _ingredients[idx];
-                            final invItem = ing['inventory_items'] as Map<String, dynamic>?;
+                            final invItem = ing['inventory_item'] as Map<String, dynamic>?;
                             final name = invItem?['name'] as String? ?? 'Unknown';
                             final unit = invItem?['unit'] as String? ?? '';
                             final qty = (ing['quantity'] as num?)?.toDouble() ?? 0;

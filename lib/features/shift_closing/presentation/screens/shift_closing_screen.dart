@@ -3,9 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 class ShiftClosingScreen extends ConsumerStatefulWidget {
@@ -29,80 +29,33 @@ class _ShiftClosingScreenState extends ConsumerState<ShiftClosingScreen> {
 
   Future<void> _loadTodaySummary() async {
     setState(() => _loading = true);
-    final supabase = ref.read(supabaseProvider);
     final profile = ref.read(authNotifierProvider).value;
-    if (profile == null) {
+    if (profile?.branchId == null) {
       setState(() => _loading = false);
       return;
     }
 
-    final today = DateTime.now();
-    final startOfDay = DateTime(today.year, today.month, today.day);
-    final endOfDay = startOfDay.add(const Duration(days: 1));
-
-    final bills = await supabase
-        .from(SupabaseConstants.bills)
-        .select()
-        .eq('branch_id', profile.branchId ?? '')
-        .gte('created_at', startOfDay.toIso8601String())
-        .lt('created_at', endOfDay.toIso8601String());
-
-    final List<Map<String, dynamic>> billList = List<Map<String, dynamic>>.from(bills);
-
-    double cashTotal = 0;
-    double cardTotal = 0;
-    double esewaTotal = 0;
-    double khaltiTotal = 0;
-    double fonepayTotal = 0;
-    double creditTotal = 0;
-    double refundTotal = 0;
-    double totalRevenue = 0;
-    double totalVat = 0;
-    double totalDiscount = 0;
-    double totalServiceCharge = 0;
-    int billCount = 0;
-
-    for (final b in billList) {
-      final method = b['payment_method'] as String? ?? 'cash';
-      final amount = (b['total_amount'] as num?)?.toDouble() ?? 0;
-      final status = b['payment_status'] as String? ?? 'paid';
-
-      if (status == 'refunded') {
-        refundTotal += amount;
-        continue;
-      }
-
-      totalRevenue += amount;
-      totalVat += (b['vat_amount'] as num?)?.toDouble() ?? 0;
-      totalDiscount += (b['discount'] as num?)?.toDouble() ?? 0;
-      totalServiceCharge += (b['service_charge'] as num?)?.toDouble() ?? 0;
-      billCount++;
-
-      switch (method) {
-        case 'cash': cashTotal += amount; break;
-        case 'card': cardTotal += amount; break;
-        case 'esewa': esewaTotal += amount; break;
-        case 'khalti': khaltiTotal += amount; break;
-        case 'fonepay': fonepayTotal += amount; break;
-        case 'credit': creditTotal += amount; break;
-      }
-    }
+    final response = await ApiClient.instance.get(
+      ApiConstants.shiftTodaySummary,
+      queryParameters: {'branchId': profile!.branchId!},
+    );
+    final s = response.data as Map<String, dynamic>;
 
     setState(() {
       _summary = {
-        'cash': cashTotal,
-        'card': cardTotal,
-        'esewa': esewaTotal,
-        'khalti': khaltiTotal,
-        'fonepay': fonepayTotal,
-        'credit': creditTotal,
-        'refund': refundTotal,
-        'total_revenue': totalRevenue,
-        'total_vat': totalVat,
-        'total_discount': totalDiscount,
-        'total_service_charge': totalServiceCharge,
-        'bill_count': billCount,
-        'net_revenue': totalRevenue - refundTotal,
+        'cash': (s['cash'] as num?)?.toDouble() ?? 0,
+        'card': (s['card'] as num?)?.toDouble() ?? 0,
+        'esewa': (s['esewa'] as num?)?.toDouble() ?? 0,
+        'khalti': (s['khalti'] as num?)?.toDouble() ?? 0,
+        'fonepay': (s['fonepay'] as num?)?.toDouble() ?? 0,
+        'credit': (s['credit'] as num?)?.toDouble() ?? 0,
+        'refund': (s['refund'] as num?)?.toDouble() ?? 0,
+        'total_revenue': (s['total_revenue'] as num?)?.toDouble() ?? 0,
+        'total_vat': (s['total_vat'] as num?)?.toDouble() ?? 0,
+        'total_discount': (s['total_discount'] as num?)?.toDouble() ?? 0,
+        'total_service_charge': (s['total_service_charge'] as num?)?.toDouble() ?? 0,
+        'bill_count': (s['bill_count'] as num?)?.toInt() ?? 0,
+        'net_revenue': (s['net_revenue'] as num?)?.toDouble() ?? 0,
       };
       _loading = false;
     });
@@ -203,29 +156,28 @@ class _ShiftClosingScreenState extends ConsumerState<ShiftClosingScreen> {
     setState(() => _submitting = true);
 
     try {
-      final supabase = ref.read(supabaseProvider);
-      await supabase.from(SupabaseConstants.shiftClosings).insert({
-        'id': const Uuid().v4(),
-        'branch_id': profile?.branchId,
-        'cashier_id': profile?.id,
-        'cashier_name': profile?.fullName,
-        'date': DateTime.now().toIso8601String().substring(0, 10),
-        'cash_total': _summary!['cash'],
-        'card_total': _summary!['card'],
-        'esewa_total': _summary!['esewa'],
-        'khalti_total': _summary!['khalti'],
-        'fonepay_total': _summary!['fonepay'],
-        'credit_total': _summary!['credit'],
-        'refund_total': _summary!['refund'],
-        'total_revenue': _summary!['total_revenue'],
-        'net_revenue': _summary!['net_revenue'],
-        'total_vat': _summary!['total_vat'],
-        'total_discount': _summary!['total_discount'],
-        'total_service_charge': _summary!['total_service_charge'],
-        'bill_count': _summary!['bill_count'],
-        'status': 'pending_approval',
-        'created_at': DateTime.now().toIso8601String(),
-      });
+      final profileBranchId = profile?.branchId;
+      await ApiClient.instance.post(
+        ApiConstants.shiftClosing,
+        data: {
+          'branchId': profileBranchId,
+          'cashierName': profile?.fullName,
+          'date': DateTime.now().toIso8601String().substring(0, 10),
+          'cashTotal': _summary!['cash'],
+          'cardTotal': _summary!['card'],
+          'esewaTotal': _summary!['esewa'],
+          'khaltiTotal': _summary!['khalti'],
+          'fonepayTotal': _summary!['fonepay'],
+          'creditTotal': _summary!['credit'],
+          'refundTotal': _summary!['refund'],
+          'totalRevenue': _summary!['total_revenue'],
+          'netRevenue': _summary!['net_revenue'],
+          'totalVat': _summary!['total_vat'],
+          'totalDiscount': _summary!['total_discount'],
+          'totalServiceCharge': _summary!['total_service_charge'],
+          'billCount': _summary!['bill_count'],
+        },
+      );
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -3,21 +3,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:skeletonizer/skeletonizer.dart';
-import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
-final suppliersProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
+final suppliersProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile == null) return const Stream.empty();
-  return supabase
-      .from(SupabaseConstants.suppliers)
-      .stream(primaryKey: ['id'])
-      .eq('branch_id', profile.branchId ?? '')
-      .order('name')
-      .map((rows) => List<Map<String, dynamic>>.from(rows));
+  if (profile?.branchId == null) return [];
+  final response = await ApiClient.instance.get(
+    ApiConstants.suppliers,
+    queryParameters: {'branchId': profile!.branchId!},
+  );
+  final data = response.data as Map<String, dynamic>;
+  final rows = List<Map<String, dynamic>>.from(data['data'] as List? ?? []);
+  rows.sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
+  return rows;
 });
 
 class SupplierScreen extends ConsumerStatefulWidget {
@@ -210,42 +211,32 @@ class _SupplierScreenState extends ConsumerState<SupplierScreen> {
             onPressed: () async {
               if (nameCtrl.text.trim().isEmpty) return;
               final profile = ref.read(authNotifierProvider).value;
-              final supabase = ref.read(supabaseProvider);
+
+              final payload = {
+                'name': nameCtrl.text.trim(),
+                'contactPerson':
+                    contactCtrl.text.trim().isEmpty ? null : contactCtrl.text.trim(),
+                'phone': phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
+                'email': emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
+                'category':
+                    categoryCtrl.text.trim().isEmpty ? null : categoryCtrl.text.trim(),
+                'address':
+                    addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
+                'notes': notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
+              };
 
               if (existing != null) {
-                await supabase.from(SupabaseConstants.suppliers).update({
-                  'name': nameCtrl.text.trim(),
-                  'contact_person': contactCtrl.text.trim().isEmpty
-                      ? null
-                      : contactCtrl.text.trim(),
-                  'phone': phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
-                  'email': emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
-                  'category':
-                      categoryCtrl.text.trim().isEmpty ? null : categoryCtrl.text.trim(),
-                  'address':
-                      addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
-                  'notes': notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
-                  'updated_at': DateTime.now().toIso8601String(),
-                }).eq('id', existing['id'] as String);
+                await ApiClient.instance.patch(
+                  ApiConstants.supplierById(existing['id'] as String),
+                  data: payload,
+                );
               } else {
-                await supabase.from(SupabaseConstants.suppliers).insert({
-                  'id': const Uuid().v4(),
-                  'branch_id': profile?.branchId,
-                  'name': nameCtrl.text.trim(),
-                  'contact_person': contactCtrl.text.trim().isEmpty
-                      ? null
-                      : contactCtrl.text.trim(),
-                  'phone': phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
-                  'email': emailCtrl.text.trim().isEmpty ? null : emailCtrl.text.trim(),
-                  'category':
-                      categoryCtrl.text.trim().isEmpty ? null : categoryCtrl.text.trim(),
-                  'address':
-                      addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
-                  'notes': notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
-                  'is_active': true,
-                  'created_at': DateTime.now().toIso8601String(),
-                });
+                await ApiClient.instance.post(
+                  ApiConstants.suppliers,
+                  data: {'branchId': profile?.branchId, ...payload},
+                );
               }
+              ref.invalidate(suppliersProvider);
 
               if (ctx.mounted) {
                 Navigator.pop(ctx);
@@ -276,7 +267,8 @@ class _SupplierScreenState extends ConsumerState<SupplierScreen> {
       ),
     );
     if (confirmed != true) return;
-    await ref.read(supabaseProvider).from(SupabaseConstants.suppliers).delete().eq('id', id);
+    await ApiClient.instance.delete(ApiConstants.supplierById(id));
+    ref.invalidate(suppliersProvider);
   }
 }
 

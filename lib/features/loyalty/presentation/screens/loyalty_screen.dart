@@ -3,41 +3,30 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
-final loyaltyCustomersProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
+final loyaltyCustomersProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile == null) return const Stream.empty();
-  return supabase
-      .from(SupabaseConstants.customers)
-      .stream(primaryKey: ['id'])
-      .eq('branch_id', profile.branchId ?? '')
-      .map((rows) {
-        final list = List<Map<String, dynamic>>.from(rows);
-        list.sort((a, b) => ((b['loyalty_points'] as num?) ?? 0)
-            .compareTo((a['loyalty_points'] as num?) ?? 0));
-        return list;
-      });
+  if (profile?.branchId == null) return [];
+  final response = await ApiClient.instance.get(
+    ApiConstants.customers,
+    queryParameters: {'branchId': profile!.branchId!},
+  );
+  final data = response.data as Map<String, dynamic>;
+  final list = List<Map<String, dynamic>>.from(data['data'] as List? ?? []);
+  list.sort((a, b) => ((b['loyalty_points'] as num?) ?? 0)
+      .compareTo((a['loyalty_points'] as num?) ?? 0));
+  return list;
 });
 
 final loyaltyHistoryProvider =
-    StreamProvider.family<List<Map<String, dynamic>>, String>((ref, customerId) {
-  final supabase = ref.watch(supabaseProvider);
-  return supabase
-      .from(SupabaseConstants.loyaltyTransactions)
-      .stream(primaryKey: ['id'])
-      .eq('customer_id', customerId)
-      .order('created_at')
-      .map((rows) {
-        final list = List<Map<String, dynamic>>.from(rows);
-        list.sort((a, b) =>
-            (b['created_at'] as String).compareTo(a['created_at'] as String));
-        return list.take(30).toList();
-      });
+    FutureProvider.family<List<Map<String, dynamic>>, String>((ref, customerId) async {
+  final response = await ApiClient.instance.get(ApiConstants.loyaltyHistory(customerId));
+  final list = List<Map<String, dynamic>>.from(response.data as List? ?? []);
+  return list.take(30).toList();
 });
 
 class LoyaltyScreen extends ConsumerStatefulWidget {
@@ -216,7 +205,7 @@ class _LoyaltyScreenState extends ConsumerState<LoyaltyScreen>
               final amount = double.tryParse(amountCtrl.text) ?? 0;
               final earned = (amount / 100).floor();
               if (earned <= 0) return;
-              await _awardPoints(customer['id'] as String, earned, amount, 'earn');
+              await _earnPoints(customer['id'] as String, earned, amount);
               if (ctx.mounted) {
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -225,7 +214,6 @@ class _LoyaltyScreenState extends ConsumerState<LoyaltyScreen>
                     backgroundColor: AppColors.success,
                   ),
                 );
-                // Stream auto-updates; no need to invalidate
               }
             },
             child: const Text('Award Points'),
@@ -269,14 +257,12 @@ class _LoyaltyScreenState extends ConsumerState<LoyaltyScreen>
               final points = int.tryParse(pointsCtrl.text) ?? 0;
               if (phone.isEmpty || points <= 0) return;
 
-              final supabase = ref.read(supabaseProvider);
-              final data = await supabase
-                  .from(SupabaseConstants.customers)
-                  .select()
-                  .eq('phone', phone)
-                  .maybeSingle();
-
-              if (data == null) {
+              Map<String, dynamic> data;
+              try {
+                final response = await ApiClient.instance
+                    .get(ApiConstants.customerByPhone(phone));
+                data = response.data as Map<String, dynamic>;
+              } catch (_) {
                 if (ctx.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Customer not found')),
@@ -298,7 +284,7 @@ class _LoyaltyScreenState extends ConsumerState<LoyaltyScreen>
                 return;
               }
 
-              await _awardPoints(data['id'] as String, -points, 0, 'redeem');
+              await _redeemPoints(data['id'] as String, points);
               if (ctx.mounted) {
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -317,34 +303,22 @@ class _LoyaltyScreenState extends ConsumerState<LoyaltyScreen>
     );
   }
 
-  Future<void> _awardPoints(
-      String customerId, int points, double purchaseAmount, String type) async {
-    final supabase = ref.read(supabaseProvider);
-    final profile = ref.read(authNotifierProvider).value;
+  Future<void> _earnPoints(String customerId, int points, double purchaseAmount) async {
+    await ApiClient.instance.post(
+      ApiConstants.earnPoints(customerId),
+      data: {'points': points, 'purchaseAmount': purchaseAmount},
+    );
+    ref.invalidate(loyaltyCustomersProvider);
+    ref.invalidate(loyaltyHistoryProvider(customerId));
+  }
 
-    await supabase.from(SupabaseConstants.loyaltyTransactions).insert({
-      'id': const Uuid().v4(),
-      'customer_id': customerId,
-      'branch_id': profile?.branchId,
-      'type': type,
-      'points': points.abs(),
-      'purchase_amount': purchaseAmount,
-      'notes': type == 'earn' ? 'Points earned on purchase' : 'Points redeemed',
-      'created_by': profile?.id,
-      'created_at': DateTime.now().toIso8601String(),
-    });
-
-    final currentData = await supabase
-        .from(SupabaseConstants.customers)
-        .select('loyalty_points')
-        .eq('id', customerId)
-        .single();
-
-    final currentPts = (currentData['loyalty_points'] as num?)?.toInt() ?? 0;
-    await supabase
-        .from(SupabaseConstants.customers)
-        .update({'loyalty_points': currentPts + points})
-        .eq('id', customerId);
+  Future<void> _redeemPoints(String customerId, int points) async {
+    await ApiClient.instance.post(
+      ApiConstants.redeemPoints(customerId),
+      data: {'points': points},
+    );
+    ref.invalidate(loyaltyCustomersProvider);
+    ref.invalidate(loyaltyHistoryProvider(customerId));
   }
 }
 
@@ -648,22 +622,15 @@ class _CustomerHistorySheet extends ConsumerWidget {
   }
 }
 
-// ── Recent Transactions Tab (real-time) ──
-final _recentLoyaltyTxnsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
+// ── Recent Transactions Tab ──
+final _recentLoyaltyTxnsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile?.branchId == null) return const Stream.empty();
-  return supabase
-      .from(SupabaseConstants.loyaltyTransactions)
-      .stream(primaryKey: ['id'])
-      .eq('branch_id', profile!.branchId!)
-      .order('created_at')
-      .map((rows) {
-        final list = List<Map<String, dynamic>>.from(rows);
-        list.sort((a, b) =>
-            (b['created_at'] as String).compareTo(a['created_at'] as String));
-        return list.take(50).toList();
-      });
+  if (profile?.branchId == null) return [];
+  final response = await ApiClient.instance.get(
+    ApiConstants.loyaltyRecent,
+    queryParameters: {'branchId': profile!.branchId!, 'limit': '50'},
+  );
+  return List<Map<String, dynamic>>.from(response.data as List? ?? []);
 });
 
 class _RecentTransactionsTab extends ConsumerWidget {
@@ -696,7 +663,7 @@ class _RecentTransactionsTab extends ConsumerWidget {
             final pts = (t['points'] as num?)?.toInt() ?? 0;
             // customer name from joined data or fallback
             final customerName =
-                (t['customers'] as Map<String, dynamic>?)?['name'] as String?
+                (t['customer'] as Map<String, dynamic>?)?['name'] as String?
                 ?? t['customer_name'] as String?
                 ?? '—';
             return Container(

@@ -4,19 +4,23 @@ import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pluto_grid/pluto_grid.dart';
 import 'package:skeletonizer/skeletonizer.dart';
-import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/entities/inventory_entities.dart';
 
-final inventoryProvider = StreamProvider<List<InventoryItem>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
+final inventoryProvider = FutureProvider<List<InventoryItem>>((ref) async {
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile == null) return const Stream.empty();
-  return supabase.from(SupabaseConstants.inventoryItems).stream(primaryKey: ['id'])
-      .eq('branch_id', profile.branchId ?? '').order('name')
-      .map((rows) => rows.map((r) => InventoryItem.fromJson(r)).toList());
+  if (profile?.branchId == null) return [];
+  final response = await ApiClient.instance.get(
+    ApiConstants.inventory,
+    queryParameters: {'branchId': profile!.branchId!},
+  );
+  final data = response.data as Map<String, dynamic>;
+  final rows = data['data'] as List<dynamic>;
+  return rows.map((r) => InventoryItem.fromJson(r as Map<String, dynamic>)).toList()
+    ..sort((a, b) => a.name.compareTo(b.name));
 });
 
 class InventoryScreen extends ConsumerStatefulWidget {
@@ -295,17 +299,16 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
         ElevatedButton(
           onPressed: () async {
             final profile = ref.read(authNotifierProvider).value;
-            final supabase = ref.read(supabaseProvider);
-            await supabase.from(SupabaseConstants.inventoryItems).insert({
-              'id': const Uuid().v4(),
-              'branch_id': profile?.branchId,
-              'name': nameCtrl.text.trim(),
-              'unit': unitCtrl.text.trim(),
-              'current_stock': double.tryParse(stockCtrl.text) ?? 0,
-              'reorder_level': double.tryParse(reorderCtrl.text) ?? 0,
-              'created_at': DateTime.now().toIso8601String(),
-              'updated_at': DateTime.now().toIso8601String(),
-            });
+            await ApiClient.instance.post(
+              ApiConstants.inventory,
+              data: {
+                'branchId': profile?.branchId,
+                'name': nameCtrl.text.trim(),
+                'unit': unitCtrl.text.trim(),
+                'currentStock': double.tryParse(stockCtrl.text) ?? 0,
+                'reorderLevel': double.tryParse(reorderCtrl.text) ?? 0,
+              },
+            );
             ref.invalidate(inventoryProvider);
             if (context.mounted) Navigator.pop(ctx);
           },

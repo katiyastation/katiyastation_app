@@ -4,18 +4,22 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import 'package:katiya_station_rms/features/cashier/domain/entities/bill_entities.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../dashboard/presentation/screens/dashboard_screen.dart';
 
-final creditProvider = StreamProvider<List<CreditRecord>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
+final creditProvider = FutureProvider<List<CreditRecord>>((ref) async {
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile == null) return const Stream.empty();
-  return supabase.from(SupabaseConstants.creditRecords).stream(primaryKey: ['id'])
-      .eq('branch_id', profile.branchId ?? '').order('created_at', ascending: false)
-      .map((rows) => rows.map((r) => CreditRecord.fromJson(r)).toList());
+  if (profile?.branchId == null) return [];
+  final response = await ApiClient.instance.get(
+    ApiConstants.credits,
+    queryParameters: {'branchId': profile!.branchId!},
+  );
+  final data = response.data as Map<String, dynamic>;
+  final rows = data['data'] as List<dynamic>;
+  return rows.map((r) => CreditRecord.fromJson(r as Map<String, dynamic>)).toList();
 });
 
 class CreditScreen extends ConsumerStatefulWidget {
@@ -187,12 +191,10 @@ class _CreditCard extends StatelessWidget {
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
         ElevatedButton(onPressed: () async {
           final collected = double.tryParse(amountCtrl.text) ?? 0;
-          final newPaid = credit.paidAmount + collected;
-          final newStatus = newPaid >= credit.creditAmount ? 'paid' : 'partial_paid';
-          await ref.read(supabaseProvider).from(SupabaseConstants.creditRecords).update({
-            'paid_amount': newPaid,
-            'status': newStatus,
-          }).eq('id', credit.id);
+          await ApiClient.instance.post(
+            ApiConstants.settleCredit(credit.id),
+            data: {'amount': collected},
+          );
           ref.invalidate(creditProvider);
           ref.invalidate(dashboardCreditProvider);
           if (context.mounted) Navigator.pop(ctx);

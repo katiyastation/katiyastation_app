@@ -3,12 +3,11 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-  app_links
   connectivity_plus
+  firebase_core
   flutter_pos_printer_platform_image_3
   flutter_secure_storage_windows
-  passkeys_windows
-  url_launcher_windows
+  isar_flutter_libs
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

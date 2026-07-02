@@ -3,22 +3,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
-// Real-time purchases stream
-final purchasesProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
+final purchasesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile == null) return const Stream.empty();
-  return supabase
-      .from(SupabaseConstants.purchases)
-      .stream(primaryKey: ['id'])
-      .eq('branch_id', profile.branchId ?? '')
-      .order('created_at', ascending: false)
-      .map((rows) => List<Map<String, dynamic>>.from(rows));
+  if (profile?.branchId == null) return [];
+  final response = await ApiClient.instance.get(
+    ApiConstants.purchases,
+    queryParameters: {'branchId': profile!.branchId!},
+  );
+  final data = response.data as Map<String, dynamic>;
+  return List<Map<String, dynamic>>.from(data['data'] as List? ?? []);
 });
 
 class PurchaseScreen extends ConsumerStatefulWidget {
@@ -118,15 +116,15 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
         ElevatedButton(onPressed: () async {
           final profile = ref.read(authNotifierProvider).value;
-          await ref.read(supabaseProvider).from(SupabaseConstants.purchases).insert({
-            'id': const Uuid().v4(),
-            'branch_id': profile?.branchId,
-            'supplier_name': supplierCtrl.text.trim(),
-            'total_amount': double.tryParse(amountCtrl.text) ?? 0,
-            'notes': notesCtrl.text.trim(),
-            'status': 'received',
-            'created_at': DateTime.now().toIso8601String(),
-          });
+          await ApiClient.instance.post(
+            ApiConstants.purchases,
+            data: {
+              'branchId': profile?.branchId,
+              'supplierName': supplierCtrl.text.trim(),
+              'totalAmount': double.tryParse(amountCtrl.text) ?? 0,
+              'notes': notesCtrl.text.trim(),
+            },
+          );
           ref.invalidate(purchasesProvider);
           if (context.mounted) Navigator.pop(ctx);
         }, child: const Text('Save')),

@@ -6,24 +6,24 @@ import 'package:intl/intl.dart';
 import 'package:pluto_grid/pluto_grid.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
-final auditLogsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
+final auditLogsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile == null) return const Stream.empty();
-  return supabase
-      .from(SupabaseConstants.auditLogs)
-      .stream(primaryKey: ['id'])
-      .eq('branch_id', profile.branchId ?? '')
-      .order('created_at')
-      .map((rows) {
-        final list = List<Map<String, dynamic>>.from(rows);
-        list.sort((a, b) =>
-            (b['created_at'] as String).compareTo(a['created_at'] as String));
-        return list.take(200).toList();
-      });
+  if (profile == null) return [];
+  final response = await ApiClient.instance.get(
+    ApiConstants.auditLogs,
+    queryParameters: {
+      if (profile.branchId != null) 'branchId': profile.branchId!,
+      'limit': '100',
+    },
+  );
+  final data = response.data as Map<String, dynamic>;
+  final list = List<Map<String, dynamic>>.from(data['data'] as List? ?? []);
+  list.sort((a, b) => (b['created_at'] as String).compareTo(a['created_at'] as String));
+  return list.take(200).toList();
 });
 
 Color _actionColor(String action) {

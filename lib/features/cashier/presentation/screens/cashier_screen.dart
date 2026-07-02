@@ -3,10 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_constants.dart';
-import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../../core/utils/responsive_utils.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -14,59 +14,53 @@ import '../../../tables/presentation/providers/tables_provider.dart';
 import '../../../dashboard/presentation/screens/dashboard_screen.dart';
 import '../../../payment_history/presentation/screens/payment_history_screen.dart';
 
-// Real-time session billing data provider
+// Session billing data provider (KOTs + aggregated items for this session)
 final _sessionBillingProvider =
-    StreamProvider.family<Map<String, dynamic>, String>((ref, sessionId) {
-  if (sessionId.isEmpty) return const Stream.empty();
-  final supabase = ref.watch(supabaseProvider);
-  return supabase
-      .from(SupabaseConstants.kots)
-      .stream(primaryKey: ['id'])
-      .eq('session_id', sessionId)
-      .order('created_at')
-      .asyncMap((kotRows) async {
-        final kots =
-            kotRows.where((k) => k['status'] != 'cancelled').toList();
+    FutureProvider.family<Map<String, dynamic>, String>((ref, sessionId) async {
+  if (sessionId.isEmpty) return {'items': [], 'subtotal': 0.0, 'kots': []};
 
-        List<Map<String, dynamic>> allItems = [];
-        for (final kot in kots) {
-          final items = await supabase
-              .from(SupabaseConstants.kotItems)
-              .select()
-              .eq('kot_id', kot['id'] as String);
-          allItems.addAll(List<Map<String, dynamic>>.from(items));
-        }
+  final response =
+      await ApiClient.instance.get(ApiConstants.kotsBySession(sessionId));
+  final kots = (response.data as List<dynamic>)
+      .cast<Map<String, dynamic>>()
+      .where((k) => k['status'] != 'cancelled')
+      .toList();
 
-        final Map<String, Map<String, dynamic>> aggregated = {};
-        for (final item in allItems) {
-          final key = item['menu_item_id'] as String;
-          if (aggregated.containsKey(key)) {
-            aggregated[key]!['quantity'] =
-                (aggregated[key]!['quantity'] as int) +
-                    (item['quantity'] as int);
-          } else {
-            aggregated[key] = {
-              'menu_item_id': item['menu_item_id'],
-              'menu_item_name': item['menu_item_name'] ?? item['name'],
-              'quantity': item['quantity'],
-              'unit_price': item['unit_price'],
-            };
-          }
-        }
+  final List<Map<String, dynamic>> allItems = [];
+  for (final kot in kots) {
+    final items = (kot['items'] as List? ?? [])
+        .cast<Map<String, dynamic>>()
+        .where((i) => i['status'] != 'cancelled');
+    allItems.addAll(items);
+  }
 
-        double subtotal = 0;
-        for (final item in aggregated.values) {
-          subtotal +=
-              ((item['unit_price'] as num?)?.toDouble() ?? 0) *
-              (item['quantity'] as int);
-        }
+  final Map<String, Map<String, dynamic>> aggregated = {};
+  for (final item in allItems) {
+    final key = item['menu_item_id'] as String;
+    if (aggregated.containsKey(key)) {
+      aggregated[key]!['quantity'] =
+          (aggregated[key]!['quantity'] as int) + (item['quantity'] as int);
+    } else {
+      aggregated[key] = {
+        'menu_item_id': item['menu_item_id'],
+        'menu_item_name': item['menu_item_name'] ?? item['name'],
+        'quantity': item['quantity'],
+        'unit_price': item['unit_price'],
+      };
+    }
+  }
 
-        return {
-          'items': aggregated.values.toList(),
-          'subtotal': subtotal,
-          'kots': kots,
-        };
-      });
+  double subtotal = 0;
+  for (final item in aggregated.values) {
+    subtotal += ((item['unit_price'] as num?)?.toDouble() ?? 0) *
+        (item['quantity'] as int);
+  }
+
+  return {
+    'items': aggregated.values.toList(),
+    'subtotal': subtotal,
+    'kots': kots,
+  };
 });
 
 class CashierScreen extends ConsumerStatefulWidget {
@@ -1505,74 +1499,23 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
     if (_selectedSessionId == null || _selectedTableId == null) return;
     setState(() => _processing = true);
     try {
-      final supabase = ref.read(supabaseProvider);
-      final billId = const Uuid().v4();
+      final amountPaid = _paymentMethod == 'cash'
+          ? (double.tryParse(_amountCtrl.text) ?? total)
+          : total;
 
-      final billCount =
-          await supabase.from(SupabaseConstants.bills).select('id');
-      final invoiceNum =
-          'INV-${(billCount.length + 1).toString().padLeft(4, '0')}';
-
-      final billData = {
-        'id': billId,
-        'branch_id': profile?.branchId,
-        'session_id': _selectedSessionId,
-        'table_id': _selectedTableId,
-        'invoice_number': invoiceNum,
-        'cashier_id': profile?.id,
-        'cashier_name': profile?.fullName,
-        'customer_name': _customerName,
-        'customer_phone': _customerPhone,
-        'subtotal': subtotal,
-        'discount': _discount,
-        'service_charge': serviceCharge,
-        'vat_amount': vat,
-        'total_amount': total,
-        'payment_method': _paymentMethod,
-        'payment_status':
-            _paymentMethod == 'credit' ? 'credit' : 'paid',
-        'amount_paid': _paymentMethod == 'cash'
-            ? (double.tryParse(_amountCtrl.text) ?? total)
-            : total,
-        'change_amount': _paymentMethod == 'cash'
-            ? ((double.tryParse(_amountCtrl.text) ?? total) - total)
-            : 0,
-        'created_at': DateTime.now().toIso8601String(),
-      };
-
-      await supabase.from(SupabaseConstants.bills).insert(billData);
-
-      if (_paymentMethod == 'credit') {
-        await supabase.from(SupabaseConstants.creditRecords).insert({
-          'id': const Uuid().v4(),
-          'branch_id': profile?.branchId,
-          'bill_id': billId,
-          'customer_name': _customerName ?? 'Unknown',
-          'customer_phone': _customerPhone,
-          'credit_amount': total,
-          'paid_amount': 0,
-          'status': 'pending',
-          'created_at': DateTime.now().toIso8601String(),
-        });
-      }
-
-      await supabase
-          .from(SupabaseConstants.tableSessions)
-          .update({
-            'status': 'billed',
-            'closed_at': DateTime.now().toIso8601String()
-          })
-          .eq('id', _selectedSessionId!);
-
-      await supabase
-          .from(SupabaseConstants.restaurantTables)
-          .update({
-            'status': 'available',
-            'current_session_id': null,
-            'bill_requested': false,
-            'bill_requested_at': null,
-          })
-          .eq('id', _selectedTableId!);
+      final response = await ApiClient.instance.post(
+        ApiConstants.generateBill(_selectedSessionId!),
+        data: {
+          'discount': _discount,
+          'paymentMethod': _paymentMethod,
+          'amountPaid': amountPaid,
+          if (_customerName != null) 'customerName': _customerName,
+          if (_customerPhone != null) 'customerPhone': _customerPhone,
+          'applyServiceCharge': _applyServiceCharge,
+          'applyVat': _applyVat,
+        },
+      );
+      final invoiceNum = (response.data as Map<String, dynamic>)['invoice_number'] as String? ?? '';
 
       ref.invalidate(tablesStreamProvider);
       ref.invalidate(tableSessionProvider(_selectedTableId!));

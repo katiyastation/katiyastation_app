@@ -2,19 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../inventory/domain/entities/inventory_entities.dart';
 
-final barStockProvider = StreamProvider<List<BarStockItem>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
+final barStockProvider = FutureProvider<List<BarStockItem>>((ref) async {
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile == null) return const Stream.empty();
-  return supabase.from(SupabaseConstants.barStock).stream(primaryKey: ['id'])
-      .eq('branch_id', profile.branchId ?? '').order('name')
-      .map((rows) => rows.map((r) => BarStockItem.fromJson(r)).toList());
+  if (profile?.branchId == null) return [];
+  final response = await ApiClient.instance.get(
+    ApiConstants.barStock,
+    queryParameters: {'branchId': profile!.branchId!},
+  );
+  final data = response.data as Map<String, dynamic>;
+  final rows = data['data'] as List<dynamic>;
+  return rows.map((r) => BarStockItem.fromJson(r as Map<String, dynamic>)).toList()
+    ..sort((a, b) => a.name.compareTo(b.name));
 });
 
 class BarScreen extends ConsumerWidget {
@@ -130,18 +134,19 @@ class BarScreen extends ConsumerWidget {
         ElevatedButton(
           onPressed: () async {
             final profile = ref.read(authNotifierProvider).value;
-            await ref.read(supabaseProvider).from(SupabaseConstants.barStock).insert({
-              'id': const Uuid().v4(),
-              'branch_id': profile?.branchId,
-              'name': nameCtrl.text.trim(),
-              'category': category,
-              'bottle_capacity_ml': double.tryParse(capCtrl.text) ?? 750,
-              'current_bottles': double.tryParse(bottlesCtrl.text) ?? 0,
-              'pegs_ml': 30.0,
-              'price_per_peg': double.tryParse(priceCtrl.text) ?? 0,
-              'created_at': DateTime.now().toIso8601String(),
-              'updated_at': DateTime.now().toIso8601String(),
-            });
+            await ApiClient.instance.post(
+              ApiConstants.barStock,
+              data: {
+                'branchId': profile?.branchId,
+                'name': nameCtrl.text.trim(),
+                'category': category,
+                'bottleCapacityMl': double.tryParse(capCtrl.text) ?? 750,
+                'currentBottles': double.tryParse(bottlesCtrl.text) ?? 0,
+                'pegsMl': 30.0,
+                'pricePerPeg': double.tryParse(priceCtrl.text) ?? 0,
+              },
+            );
+            ref.invalidate(barStockProvider);
             if (context.mounted) Navigator.pop(ctx);
           },
           child: const Text('Add'),

@@ -4,15 +4,21 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
-final notificationsProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
+final notificationsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile == null) return const Stream.empty();
-  return supabase.from('notifications').stream(primaryKey: ['id'])
-      .eq('branch_id', profile.branchId ?? '').order('created_at', ascending: false)
-      .map((rows) => rows);
+  if (profile?.branchId == null) return [];
+  final response = await ApiClient.instance.get(
+    ApiConstants.notifications,
+    queryParameters: {'branchId': profile!.branchId!},
+  );
+  final data = response.data as Map<String, dynamic>;
+  final rows = List<Map<String, dynamic>>.from(data['data'] as List? ?? []);
+  rows.sort((a, b) => (b['created_at'] as String).compareTo(a['created_at'] as String));
+  return rows;
 });
 
 class NotificationsScreen extends ConsumerWidget {
@@ -65,7 +71,7 @@ class NotificationsScreen extends ConsumerWidget {
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Text(n['title'] ?? 'Notification', style: GoogleFonts.outfit(fontSize: 13, fontWeight: isRead ? FontWeight.w500 : FontWeight.w700, color: AppColors.textPrimary)),
                         const SizedBox(height: 2),
-                        Text(n['message'] ?? '', style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textSecondary)),
+                        Text(n['body'] ?? '', style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textSecondary)),
                       ])),
                       const SizedBox(width: 8),
                       Text(

@@ -1,39 +1,40 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../menu/domain/entities/menu_entities.dart';
 import '../widgets/recipe_dialog.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:excel/excel.dart' hide Border;
 
-// All categories stream
-final menuCategoriesStreamProvider = StreamProvider<List<MenuCategory>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
+// All categories for the branch
+final menuCategoriesStreamProvider = FutureProvider<List<MenuCategory>>((ref) async {
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile == null) return const Stream.empty();
-  return supabase
-      .from(SupabaseConstants.menuCategories)
-      .stream(primaryKey: ['id'])
-      .eq('branch_id', profile.branchId ?? '')
-      .order('sort_order')
-      .map((rows) => rows.map((r) => MenuCategory.fromJson(r)).toList());
+  if (profile?.branchId == null) return [];
+  final response = await ApiClient.instance.get(
+    ApiConstants.menuCategories,
+    queryParameters: {'branchId': profile!.branchId!},
+  );
+  final rows = response.data as List<dynamic>;
+  return rows.map((r) => MenuCategory.fromJson(r as Map<String, dynamic>)).toList()
+    ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 });
 
-// Items by category stream
-final menuItemsByCatProvider = StreamProvider.family<List<MenuItem>, String>((ref, catId) {
-  final supabase = ref.watch(supabaseProvider);
-  return supabase
-      .from(SupabaseConstants.menuItems)
-      .stream(primaryKey: ['id'])
-      .eq('category_id', catId)
-      .order('name')
-      .map((rows) => rows.map((r) => MenuItem.fromJson(r)).toList());
+// Items by category
+final menuItemsByCatProvider =
+    FutureProvider.family<List<MenuItem>, String>((ref, catId) async {
+  final response = await ApiClient.instance.get(
+    ApiConstants.menuItems,
+    queryParameters: {'categoryId': catId},
+  );
+  final rows = response.data as List<dynamic>;
+  return rows.map((r) => MenuItem.fromJson(r as Map<String, dynamic>)).toList()
+    ..sort((a, b) => a.name.compareTo(b.name));
 });
 
 class MenuManagementScreen extends ConsumerStatefulWidget {
@@ -193,17 +194,17 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
               final scaffoldMessenger = ScaffoldMessenger.of(context);
               try {
                 final profile = ref.read(authNotifierProvider).value;
-                final supabase = ref.read(supabaseProvider);
                 if (profile?.branchId == null) {
                   throw Exception('Branch ID not found in user profile. Cannot add category.');
                 }
-                await supabase.from(SupabaseConstants.menuCategories).insert({
-                  'id': const Uuid().v4(),
-                  'branch_id': profile!.branchId,
-                  'name': nameCtrl.text.trim(),
-                  'type': type,
-                  'is_active': true,
-                });
+                await ApiClient.instance.post(
+                  ApiConstants.menuCategories,
+                  data: {
+                    'branchId': profile!.branchId,
+                    'name': nameCtrl.text.trim(),
+                    'type': type,
+                  },
+                );
                 ref.invalidate(menuCategoriesStreamProvider);
                 if (context.mounted) Navigator.pop(ctx);
               } catch (e) {
@@ -250,23 +251,22 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
               final scaffoldMessenger = ScaffoldMessenger.of(context);
               try {
                 final profile = ref.read(authNotifierProvider).value;
-                final supabase = ref.read(supabaseProvider);
                 if (profile?.branchId == null) {
                   throw Exception('Branch ID not found in user profile. Cannot save item.');
                 }
                 final data = {
-                  'branch_id': profile!.branchId,
-                  'category_id': _selectedCatId,
+                  'branchId': profile!.branchId,
+                  'categoryId': _selectedCatId,
                   'name': nameCtrl.text.trim(),
                   'price': double.tryParse(priceCtrl.text) ?? 0,
-                  'image_url': imageUrlCtrl.text.trim().isEmpty ? null : imageUrlCtrl.text.trim(),
+                  'imageUrl': imageUrlCtrl.text.trim().isEmpty ? null : imageUrlCtrl.text.trim(),
                   'description': descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
-                  'is_available': true,
+                  'isAvailable': true,
                 };
                 if (existing == null) {
-                  await supabase.from(SupabaseConstants.menuItems).insert({'id': const Uuid().v4(), ...data});
+                  await ApiClient.instance.post(ApiConstants.menuItems, data: data);
                 } else {
-                  await supabase.from(SupabaseConstants.menuItems).update(data).eq('id', existing.id);
+                  await ApiClient.instance.patch(ApiConstants.menuItemById(existing.id), data: data);
                 }
                 if (_selectedCatId != null) {
                   ref.invalidate(menuItemsByCatProvider(_selectedCatId!));
@@ -303,6 +303,12 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
         throw Exception('Failed to read file bytes. Make sure the file is not empty.');
       }
 
+      final profile = ref.read(authNotifierProvider).value;
+      final branchId = profile?.branchId;
+      if (branchId == null) {
+        throw Exception('Branch ID not found in user profile.');
+      }
+
       if (!context.mounted) return;
       showDialog(
         context: context,
@@ -324,112 +330,19 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
         ),
       );
 
-      final profile = ref.read(authNotifierProvider).value;
-      final branchId = profile?.branchId;
-      if (branchId == null) {
-        throw Exception('Branch ID not found in user profile.');
-      }
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(
+          fileBytes,
+          filename: result.files.first.name,
+        ),
+      });
 
-      final supabase = ref.read(supabaseProvider);
-
-      final excel = Excel.decodeBytes(fileBytes);
-      final importedItems = <Map<String, dynamic>>[];
-      
-      String getVal(dynamic cell) {
-        if (cell == null) return '';
-        final v = cell.value;
-        if (v == null) return '';
-        return v.toString().trim();
-      }
-
-      for (final table in excel.tables.keys) {
-        final sheet = excel.tables[table];
-        if (sheet == null) continue;
-        if (sheet.maxRows <= 1) continue;
-
-        final headers = sheet.rows.first.map((c) => getVal(c).toLowerCase()).toList();
-        final catIdx = headers.indexOf('category');
-        final nameIdx = headers.indexOf('name');
-        final priceIdx = headers.indexOf('price');
-        final descIdx = headers.indexOf('description');
-        final imgIdx = headers.indexOf('image url');
-        final typeIdx = headers.indexOf('type');
-
-        if (nameIdx == -1 || priceIdx == -1 || catIdx == -1) {
-          throw Exception('Excel sheet "$table" must contain "Category", "Name", and "Price" columns.');
-        }
-
-        for (int i = 1; i < sheet.maxRows; i++) {
-          final row = sheet.rows[i];
-          if (row.isEmpty) continue;
-          final name = nameIdx < row.length ? getVal(row[nameIdx]) : '';
-          final priceStr = priceIdx < row.length ? getVal(row[priceIdx]) : '';
-          final category = catIdx < row.length ? getVal(row[catIdx]) : '';
-
-          if (name.isEmpty || priceStr.isEmpty || category.isEmpty) continue;
-
-          final price = double.tryParse(priceStr) ?? 0.0;
-          final desc = descIdx != -1 && descIdx < row.length ? getVal(row[descIdx]) : '';
-          final imgUrl = imgIdx != -1 && imgIdx < row.length ? getVal(row[imgIdx]) : '';
-          final type = typeIdx != -1 && typeIdx < row.length ? getVal(row[typeIdx]).toLowerCase() : 'food';
-
-          importedItems.add({
-            'categoryName': category,
-            'name': name,
-            'price': price,
-            'description': desc.isEmpty ? null : desc,
-            'image_url': imgUrl.isEmpty ? null : imgUrl,
-            'type': ['food', 'drink', 'bar'].contains(type) ? type : 'food',
-          });
-        }
-      }
-
-      if (importedItems.isEmpty) {
-        throw Exception('No valid items found in the Excel file.');
-      }
-
-      final catRows = await supabase.from(SupabaseConstants.menuCategories).select().eq('branch_id', branchId);
-      final existingCats = {for (var r in catRows) (r['name'] as String).toLowerCase(): r['id'] as String};
-
-      final neededCategories = importedItems.map((item) => item['categoryName'] as String).toSet();
-      final Map<String, String> categoryNameToId = {};
-
-      for (final catName in neededCategories) {
-        final key = catName.toLowerCase();
-        if (existingCats.containsKey(key)) {
-          categoryNameToId[catName] = existingCats[key]!;
-        } else {
-          final newId = const Uuid().v4();
-          final firstItemOfType = importedItems.firstWhere((item) => (item['categoryName'] as String).toLowerCase() == key, orElse: () => {'type': 'food'});
-          final catType = firstItemOfType['type'] ?? 'food';
-
-          await supabase.from(SupabaseConstants.menuCategories).insert({
-            'id': newId,
-            'branch_id': branchId,
-            'name': catName,
-            'type': catType,
-            'is_active': true,
-          });
-          existingCats[key] = newId;
-          categoryNameToId[catName] = newId;
-        }
-      }
-
-      final List<Map<String, dynamic>> itemsToInsert = importedItems.map((item) {
-        return {
-          'id': const Uuid().v4(),
-          'branch_id': branchId,
-          'category_id': categoryNameToId[item['categoryName']],
-          'name': item['name'],
-          'price': item['price'],
-          'description': item['description'],
-          'image_url': item['image_url'],
-          'type': item['type'],
-          'is_available': true,
-        };
-      }).toList();
-
-      await supabase.from(SupabaseConstants.menuItems).insert(itemsToInsert);
+      final response = await ApiClient.instance.upload(
+        '${ApiConstants.menuImportExcel}?branchId=$branchId',
+        formData,
+      );
+      final resultData = response.data as Map<String, dynamic>;
+      final created = resultData['created'] as int? ?? 0;
 
       if (context.mounted) Navigator.pop(context);
 
@@ -440,7 +353,7 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
 
       messenger.showSnackBar(
         SnackBar(
-          content: Text('✓ Imported ${itemsToInsert.length} items across ${neededCategories.length} categories!'),
+          content: Text('✓ Imported $created menu items!'),
           backgroundColor: AppColors.success,
         ),
       );
@@ -458,8 +371,7 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
   }
 
   Future<void> _deleteCategory(String id) async {
-    final supabase = ref.read(supabaseProvider);
-    await supabase.from(SupabaseConstants.menuCategories).delete().eq('id', id);
+    await ApiClient.instance.delete(ApiConstants.menuCategoryById(id));
     ref.invalidate(menuCategoriesStreamProvider);
     if (_selectedCatId == id) setState(() => _selectedCatId = null);
   }
@@ -481,8 +393,7 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
       ),
     );
     if (confirmed != true) return;
-    final supabase = ref.read(supabaseProvider);
-    await supabase.from(SupabaseConstants.menuItems).delete().eq('id', id);
+    await ApiClient.instance.delete(ApiConstants.menuItemById(id));
     if (_selectedCatId != null) {
       ref.invalidate(menuItemsByCatProvider(_selectedCatId!));
     }
@@ -610,8 +521,10 @@ class _MenuItemCard extends StatelessWidget {
                     ),
                     GestureDetector(
                       onTap: () async {
-                        final supabase = ref.read(supabaseProvider);
-                        await supabase.from(SupabaseConstants.menuItems).update({'is_available': !item.isAvailable}).eq('id', item.id);
+                        await ApiClient.instance.patch(
+                          ApiConstants.menuItemById(item.id),
+                          data: {'isAvailable': !item.isAvailable},
+                        );
                         ref.invalidate(menuItemsByCatProvider(item.categoryId));
                       },
                       child: Icon(item.isAvailable ? Icons.toggle_on_rounded : Icons.toggle_off_rounded,

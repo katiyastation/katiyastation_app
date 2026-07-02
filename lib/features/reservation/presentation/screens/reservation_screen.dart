@@ -3,18 +3,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
-import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
-final reservationsProvider = StreamProvider((ref) {
-  final supabase = ref.watch(supabaseProvider);
+final reservationsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final profile = ref.watch(authNotifierProvider).value;
-  if (profile == null) return const Stream.empty();
-  return supabase.from(SupabaseConstants.reservations).stream(primaryKey: ['id'])
-      .eq('branch_id', profile.branchId ?? '').order('reservation_date')
-      .map((rows) => rows);
+  if (profile?.branchId == null) return [];
+  final response = await ApiClient.instance.get(
+    ApiConstants.reservations,
+    queryParameters: {'branchId': profile!.branchId!},
+  );
+  final data = response.data as Map<String, dynamic>;
+  return List<Map<String, dynamic>>.from(data['data'] as List? ?? []);
 });
 
 class ReservationScreen extends ConsumerStatefulWidget {
@@ -98,8 +100,8 @@ class _ReservationScreenState extends ConsumerState<ReservationScreen> {
                         const SizedBox(width: 14),
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text(r['customer_name'] ?? 'Guest', style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                          Text('${r['guests'] ?? 1} guests • ${r['customer_phone'] ?? '—'}', style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textSecondary)),
-                          Text(r['reservation_date'] ?? '', style: GoogleFonts.outfit(fontSize: 12, color: AppColors.primary)),
+                          Text('${r['guest_count'] ?? 1} guests • ${r['customer_phone'] ?? '—'}', style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textSecondary)),
+                          Text(r['reservation_time'] ?? '', style: GoogleFonts.outfit(fontSize: 12, color: AppColors.primary)),
                         ])),
                         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                           Container(
@@ -139,7 +141,11 @@ class _ReservationScreenState extends ConsumerState<ReservationScreen> {
   }
 
   Future<void> _updateStatus(String id, String status) async {
-    await ref.read(supabaseProvider).from(SupabaseConstants.reservations).update({'status': status}).eq('id', id);
+    await ApiClient.instance.patch(
+      ApiConstants.updateReservationStatus(id),
+      data: {'status': status},
+    );
+    ref.invalidate(reservationsProvider);
   }
 
   void _showAddDialog(BuildContext context) {
@@ -180,17 +186,18 @@ class _ReservationScreenState extends ConsumerState<ReservationScreen> {
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
         ElevatedButton(onPressed: () async {
           final profile = ref.read(authNotifierProvider).value;
-          await ref.read(supabaseProvider).from(SupabaseConstants.reservations).insert({
-            'id': const Uuid().v4(),
-            'branch_id': profile?.branchId,
-            'customer_name': nameCtrl.text.trim(),
-            'customer_phone': phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
-            'guests': int.tryParse(guestsCtrl.text) ?? 2,
-            'reservation_date': selectedDate.toIso8601String(),
-            'status': 'pending',
-            'notes': notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
-            'created_at': DateTime.now().toIso8601String(),
-          });
+          await ApiClient.instance.post(
+            ApiConstants.reservations,
+            data: {
+              'branchId': profile?.branchId,
+              'customerName': nameCtrl.text.trim(),
+              'customerPhone': phoneCtrl.text.trim().isEmpty ? '' : phoneCtrl.text.trim(),
+              'guestCount': int.tryParse(guestsCtrl.text) ?? 2,
+              'reservationTime': selectedDate.toIso8601String(),
+              'notes': notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
+            },
+          );
+          ref.invalidate(reservationsProvider);
           if (context.mounted) Navigator.pop(ctx);
         }, child: const Text('Book')),
       ],

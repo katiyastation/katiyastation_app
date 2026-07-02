@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:uuid/uuid.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/supabase_constants.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 class CustomersScreen extends ConsumerStatefulWidget {
@@ -23,10 +23,15 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
 
   Future<void> _load() async {
     final profile = ref.read(authNotifierProvider).value;
-    if (profile == null) return;
-    final data = await ref.read(supabaseProvider).from(SupabaseConstants.customers)
-        .select().eq('branch_id', profile.branchId ?? '').order('name');
-    if (mounted) setState(() { _customers = List<Map<String, dynamic>>.from(data); _loading = false; });
+    if (profile?.branchId == null) return;
+    final response = await ApiClient.instance.get(
+      ApiConstants.customers,
+      queryParameters: {'branchId': profile!.branchId!},
+    );
+    final data = response.data as Map<String, dynamic>;
+    final rows = List<Map<String, dynamic>>.from(data['data'] as List? ?? []);
+    rows.sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
+    if (mounted) setState(() { _customers = rows; _loading = false; });
   }
 
   @override
@@ -128,15 +133,15 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
         ElevatedButton(onPressed: () async {
           final profile = ref.read(authNotifierProvider).value;
-          await ref.read(supabaseProvider).from(SupabaseConstants.customers).insert({
-            'id': const Uuid().v4(),
-            'branch_id': profile?.branchId,
-            'name': nameCtrl.text.trim(),
-            'phone': phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
-            'address': addrCtrl.text.trim().isEmpty ? null : addrCtrl.text.trim(),
-            'loyalty_points': 0,
-            'created_at': DateTime.now().toIso8601String(),
-          });
+          await ApiClient.instance.post(
+            ApiConstants.customers,
+            data: {
+              'branchId': profile?.branchId,
+              'name': nameCtrl.text.trim(),
+              'phone': phoneCtrl.text.trim(),
+              'address': addrCtrl.text.trim().isEmpty ? null : addrCtrl.text.trim(),
+            },
+          );
           if (context.mounted) { Navigator.pop(ctx); _load(); }
         }, child: const Text('Save')),
       ],

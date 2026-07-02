@@ -4,21 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:excel/excel.dart' hide Border, BorderStyle;
-import 'package:uuid/uuid.dart';
 
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/supabase_constants.dart';
-import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../../core/constants/api_constants.dart';
+import '../../../../core/network/api_client.dart';
 
-// allUsersProvider uses an RPC call (get_all_users) — kept as FutureProvider
-// since custom RPCs don't support Supabase real-time streams directly.
 final allUsersProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  final supabase = ref.watch(supabaseProvider);
-  final List<dynamic> data = await supabase.rpc('get_all_users');
-  final list = List<Map<String, dynamic>>.from(data);
+  final response = await ApiClient.instance.get(
+    ApiConstants.users,
+    queryParameters: {'limit': '100'},
+  );
+  final data = response.data as Map<String, dynamic>;
+  final list = List<Map<String, dynamic>>.from(data['data'] as List? ?? []);
   list.sort((a, b) {
     final aTime = DateTime.tryParse(a['created_at']?.toString() ?? '') ?? DateTime.now();
     final bTime = DateTime.tryParse(b['created_at']?.toString() ?? '') ?? DateTime.now();
@@ -27,14 +26,13 @@ final allUsersProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async 
   return list;
 });
 
-// Branches for dropdowns — real-time stream
-final allBranchesProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
-  return supabase
-      .from(SupabaseConstants.branches)
-      .stream(primaryKey: ['id'])
-      .order('name')
-      .map((rows) => List<Map<String, dynamic>>.from(rows));
+// Branches for dropdowns
+final allBranchesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  final response = await ApiClient.instance.get(ApiConstants.branches);
+  final rows = response.data as List<dynamic>;
+  final list = List<Map<String, dynamic>>.from(rows);
+  list.sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
+  return list;
 });
 
 // ── Super Admin Portal ─────────────────────────────────────────
@@ -198,10 +196,7 @@ class _SuperAdminPortalState extends ConsumerState<SuperAdminPortal>
     );
     if (confirmed != true) return;
     try {
-      await ref.read(supabaseProvider).rpc('admin_set_user_active', params: {
-        'p_target_user_id': user['id'],
-        'p_is_active': !isActive,
-      });
+      await ApiClient.instance.patch(ApiConstants.toggleUserActive(user['id'] as String));
       ref.invalidate(allUsersProvider);
       messenger.showSnackBar(SnackBar(
         content: Text('$name has been ${isActive ? 'blocked' : 'unblocked'}.'),
@@ -334,53 +329,16 @@ class _SuperAdminPortalState extends ConsumerState<SuperAdminPortal>
   }) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
-      final adminClient = ref.read(supabaseProvider);
-
-      // ── CRITICAL for Web ──────────────────────────────────────────────────
-      // On Chrome, both SupabaseClient instances share localStorage.
-      // signUp() on the temp client overwrites the admin's session token.
-      // Save the admin refresh token FIRST so we can restore it after.
-      final adminRefreshToken =
-          adminClient.auth.currentSession?.refreshToken;
-      // ─────────────────────────────────────────────────────────────────────
-
-      // 1. Temp client with implicit flow (no asyncStorage/PKCE needed on web)
-      final tempClient = SupabaseClient(
-        SupabaseConstants.supabaseUrl,
-        SupabaseConstants.supabaseAnonKey,
-        authOptions: const AuthClientOptions(
-          authFlowType: AuthFlowType.implicit,
-        ),
+      await ApiClient.instance.post(
+        ApiConstants.users,
+        data: {
+          'email': email.trim().toLowerCase(),
+          'password': password,
+          'fullName': name,
+          'role': role,
+          if (branchId != null) 'branchId': branchId,
+        },
       );
-
-      // 2. Sign up via GoTrue — writes auth.users + auth.identities correctly
-      final authResponse = await tempClient.auth.signUp(
-        email: email.trim().toLowerCase(),
-        password: password,
-      );
-
-      final newUserId = authResponse.user?.id;
-      if (newUserId == null) {
-        throw Exception('Sign up failed: User ID is null. Email may already be registered.');
-      }
-
-      // 3. Sign out the temp client immediately — clears the new user's session
-      //    from localStorage so the admin is not displaced!
-      await tempClient.auth.signOut();
-
-      // 4. Restore the admin's session in localStorage
-      if (adminRefreshToken != null) {
-        await adminClient.auth.setSession(adminRefreshToken);
-      }
-
-      // 5. Set up the user's role, branch and profile via admin RPC
-      await adminClient.rpc('admin_setup_user_profile', params: {
-        'p_user_id': newUserId,
-        'p_full_name': name,
-        'p_role': role,
-        'p_branch_id': branchId,
-        'p_invited_by': adminClient.auth.currentUser!.id,
-      });
 
       ref.invalidate(allUsersProvider);
       messenger.showSnackBar(SnackBar(
@@ -451,12 +409,14 @@ class _SuperAdminPortalState extends ConsumerState<SuperAdminPortal>
                 final messenger = ScaffoldMessenger.of(context);
                 Navigator.pop(ctx);
                 try {
-                  await ref.read(supabaseProvider).rpc('admin_update_user', params: {
-                    'p_target_user_id': user['id'],
-                    'p_role': selectedRole,
-                    'p_branch_id': selectedBranchId,
-                    'p_full_name': nameCtrl.text.trim(),
-                  });
+                  await ApiClient.instance.patch(
+                    ApiConstants.userById(user['id'] as String),
+                    data: {
+                      'role': selectedRole,
+                      if (selectedBranchId != null) 'branchId': selectedBranchId,
+                      'fullName': nameCtrl.text.trim(),
+                    },
+                  );
                   ref.invalidate(allUsersProvider);
                   messenger.showSnackBar(const SnackBar(
                       content: Text('User updated successfully'),
@@ -625,19 +585,17 @@ class _UserCard extends StatelessWidget {
   }
 }
 
-// ── Access Logs Tab (real-time stream) ────────────────────────────────────────
-final _accessLogsStreamProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
-  final supabase = ref.watch(supabaseProvider);
-  return supabase
-      .from('user_access_logs')
-      .stream(primaryKey: ['id'])
-      .order('created_at')
-      .map((rows) {
-        final list = List<Map<String, dynamic>>.from(rows);
-        list.sort((a, b) =>
-            (b['created_at'] as String).compareTo(a['created_at'] as String));
-        return list.take(100).toList();
-      });
+// ── Access Logs Tab (backed by the audit trail, filtered to user actions) ──
+final _accessLogsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  final response = await ApiClient.instance.get(
+    ApiConstants.auditLogs,
+    queryParameters: {'limit': '100'},
+  );
+  final data = response.data as Map<String, dynamic>;
+  final rows = List<Map<String, dynamic>>.from(data['data'] as List? ?? []);
+  final list = rows.where((log) => log['table_name'] == 'users').toList();
+  list.sort((a, b) => (b['created_at'] as String).compareTo(a['created_at'] as String));
+  return list.take(100).toList();
 });
 
 class _AccessLogsTab extends ConsumerWidget {
@@ -645,7 +603,8 @@ class _AccessLogsTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final logsAsync = ref.watch(_accessLogsStreamProvider);
+    final logsAsync = ref.watch(_accessLogsProvider);
+    final usersAsync = ref.watch(allUsersProvider);
     return logsAsync.when(
       loading: () =>
           const Center(child: CircularProgressIndicator(color: AppColors.primary)),
@@ -661,14 +620,16 @@ class _AccessLogsTab extends ConsumerWidget {
             ]),
           );
         }
+        final users = usersAsync.value ?? [];
         return ListView.builder(
           padding: const EdgeInsets.all(16),
           itemCount: logs.length,
           itemBuilder: (_, i) {
             final log = logs[i];
             final action = log['action'] as String? ?? '—';
-            final performer = (log['performed'] as Map?)?['full_name'] as String? ?? 'System';
-            final target = (log['target'] as Map?)?['full_name'] as String? ?? '—';
+            final performer = log['user_name'] as String? ?? 'System';
+            final targetUser = users.where((u) => u['id'] == log['row_id']).firstOrNull;
+            final target = targetUser?['full_name'] as String? ?? '—';
             final at = log['created_at'] != null
                 ? DateTime.parse(log['created_at'] as String).toLocal()
                 : null;
@@ -779,7 +740,6 @@ class _MenuImportTabState extends ConsumerState<_MenuImportTab> {
     setState(() => _isLoading = true);
 
     try {
-      final supabase = ref.read(supabaseProvider);
       List<Map<String, dynamic>> importedItems = [];
 
       final lowerName = _fileName!.toLowerCase();
@@ -797,7 +757,11 @@ class _MenuImportTabState extends ConsumerState<_MenuImportTab> {
       }
 
       final branchId = _selectedBranchId!;
-      final catRows = await supabase.from(SupabaseConstants.menuCategories).select().eq('branch_id', branchId);
+      final catsResponse = await ApiClient.instance.get(
+        ApiConstants.menuCategories,
+        queryParameters: {'branchId': branchId},
+      );
+      final catRows = List<Map<String, dynamic>>.from(catsResponse.data as List? ?? []);
       final existingCats = {for (var r in catRows) (r['name'] as String).toLowerCase(): r['id'] as String};
 
       final neededCategories = importedItems.map((item) => item['categoryName'] as String).toSet();
@@ -808,37 +772,34 @@ class _MenuImportTabState extends ConsumerState<_MenuImportTab> {
         if (existingCats.containsKey(key)) {
           categoryNameToId[catName] = existingCats[key]!;
         } else {
-          final newId = const Uuid().v4();
           final firstItemOfType = importedItems.firstWhere((item) => (item['categoryName'] as String).toLowerCase() == key, orElse: () => {'type': 'food'});
           final catType = firstItemOfType['type'] ?? 'food';
 
-          await supabase.from(SupabaseConstants.menuCategories).insert({
-            'id': newId,
-            'branch_id': branchId,
-            'name': catName,
-            'type': catType,
-            'is_active': true,
-          });
+          final created = await ApiClient.instance.post(
+            ApiConstants.menuCategories,
+            data: {'branchId': branchId, 'name': catName, 'type': catType},
+          );
+          final newId = (created.data as Map<String, dynamic>)['id'] as String;
           existingCats[key] = newId;
           categoryNameToId[catName] = newId;
         }
       }
 
-      final List<Map<String, dynamic>> itemsToInsert = importedItems.map((item) {
-        return {
-          'id': const Uuid().v4(),
-          'branch_id': branchId,
-          'category_id': categoryNameToId[item['categoryName']],
-          'name': item['name'],
-          'price': item['price'],
-          'description': item['description'],
-          'image_url': item['image_url'],
-          'type': item['type'],
-          'is_available': item['is_available'] ?? true,
-        };
-      }).toList();
-
-      await supabase.from(SupabaseConstants.menuItems).insert(itemsToInsert);
+      for (final item in importedItems) {
+        await ApiClient.instance.post(
+          ApiConstants.menuItems,
+          data: {
+            'branchId': branchId,
+            'categoryId': categoryNameToId[item['categoryName']],
+            'name': item['name'],
+            'price': item['price'],
+            'description': item['description'],
+            'imageUrl': item['image_url'],
+            'type': item['type'],
+            'isAvailable': item['is_available'] ?? true,
+          },
+        );
+      }
 
       setState(() {
         _fileName = null;
@@ -847,7 +808,7 @@ class _MenuImportTabState extends ConsumerState<_MenuImportTab> {
 
       messenger.showSnackBar(
         SnackBar(
-          content: Text('✓ Successfully imported ${itemsToInsert.length} items across ${neededCategories.length} categories!'),
+          content: Text('✓ Successfully imported ${importedItems.length} items across ${neededCategories.length} categories!'),
           backgroundColor: AppColors.success,
         ),
       );
