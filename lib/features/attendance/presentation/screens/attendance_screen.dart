@@ -24,19 +24,44 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
   void initState() { super.initState(); _loadTodayRecord(); }
 
   Future<void> _loadTodayRecord() async {
+    setState(() {
+      _loading = true;
+      _noStaffRecordMessage = null;
+    });
+
+    final String staffId;
     try {
       final staffResponse = await ApiClient.instance.get(ApiConstants.myStaffRecord);
       final staff = staffResponse.data as Map<String, dynamic>;
-      _staffId = staff['id'] as String;
-
-      final response = await ApiClient.instance.get(ApiConstants.attendanceToday(_staffId!));
-      if (mounted) setState(() { _todayRecord = response.data as Map<String, dynamic>?; _loading = false; });
-    } catch (e) {
+      staffId = staff['id'] as String;
+      _staffId = staffId;
+    } catch (_) {
+      // /staff/me 404s only when this account genuinely has no linked
+      // StaffMember record — that's the one case this message is correct for.
       if (mounted) {
         setState(() {
           _loading = false;
           _noStaffRecordMessage =
               'Your account is not linked to a staff record yet. Ask your branch manager to link it.';
+        });
+      }
+      return;
+    }
+
+    try {
+      final response = await ApiClient.instance.get(ApiConstants.attendanceToday(staffId));
+      // When there's no attendance record yet today, the backend sends a
+      // body-less response (no Content-Type header) rather than a JSON
+      // `null`, which Dio decodes as an empty string — check the type,
+      // not just `== null`, or this misparses as an error every time.
+      final data = response.data;
+      final todayRecord = data is Map<String, dynamic> ? data : null;
+      if (mounted) setState(() { _todayRecord = todayRecord; _loading = false; });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _noStaffRecordMessage = 'Could not load today\'s attendance: $e';
         });
       }
     }
@@ -57,9 +82,20 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Text(_noStaffRecordMessage!,
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.outfit(color: AppColors.textSecondary)),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_noStaffRecordMessage!,
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.outfit(color: AppColors.textSecondary)),
+                        const SizedBox(height: 16),
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.refresh_rounded, size: 18),
+                          label: const Text('Retry'),
+                          onPressed: _loadTodayRecord,
+                        ),
+                      ],
+                    ),
                   ),
                 )
               : Padding(

@@ -232,7 +232,16 @@ class ApiClient {
 // ── JWT Interceptor ────────────────────────────────────────
 class _JwtInterceptor extends QueuedInterceptorsWrapper {
   final Dio _dio;
-  bool _isRefreshing = false;
+
+  // Shared by all concurrent requests: when a screen fires several API
+  // calls at once (very common — dashboards mount many providers
+  // together) and the access token has expired, they all 401 back
+  // near-simultaneously. Coalescing onto one in-flight refresh means
+  // every one of them awaits the *same* result and retries with the new
+  // token, instead of only the first request refreshing while the rest
+  // fail outright and (with nothing clearing storage) leave the app in
+  // a half-authenticated state that looks like a random logout.
+  Future<String?>? _refreshFuture;
 
   _JwtInterceptor(this._dio);
 
@@ -253,29 +262,37 @@ class _JwtInterceptor extends QueuedInterceptorsWrapper {
     DioException err,
     ErrorInterceptorHandler handler,
   ) async {
-    if (err.response?.statusCode == 401 && !_isRefreshing) {
-      _isRefreshing = true;
-      try {
-        final newTokens = await _refreshToken();
-        if (newTokens != null) {
-          // Retry the original request with the new token
-          final opts = err.requestOptions;
-          opts.headers['Authorization'] = 'Bearer ${newTokens['accessToken']}';
-          final response = await _dio.fetch(opts);
-          _isRefreshing = false;
-          return handler.resolve(response);
-        }
-      } catch (_) {
-        // Refresh failed — clear session
-        await SecureStorage.instance.clearSession();
-        _isRefreshing = false;
-      }
+    final path = err.requestOptions.path;
+    final isAuthEndpoint = path == ApiConstants.login || path == ApiConstants.refresh;
+
+    if (err.response?.statusCode != 401 || isAuthEndpoint) {
+      handler.next(err);
+      return;
     }
-    _isRefreshing = false;
-    handler.next(err);
+
+    _refreshFuture ??= _refreshToken();
+    final newAccessToken = await _refreshFuture;
+    _refreshFuture = null;
+
+    if (newAccessToken == null) {
+      // Refresh token is genuinely gone/expired/revoked — this is a real
+      // logout, so leave the session cleared rather than stuck half-signed-in.
+      await SecureStorage.instance.clearSession();
+      handler.next(err);
+      return;
+    }
+
+    try {
+      final opts = err.requestOptions;
+      opts.headers['Authorization'] = 'Bearer $newAccessToken';
+      final response = await _dio.fetch(opts);
+      handler.resolve(response);
+    } on DioException catch (retryError) {
+      handler.next(retryError);
+    }
   }
 
-  Future<Map<String, dynamic>?> _refreshToken() async {
+  Future<String?> _refreshToken() async {
     final refreshToken = await SecureStorage.instance.getRefreshToken();
     if (refreshToken == null) return null;
 
@@ -293,7 +310,7 @@ class _JwtInterceptor extends QueuedInterceptorsWrapper {
         if (newRefreshToken != null) {
           await SecureStorage.instance.saveRefreshToken(newRefreshToken);
         }
-        return data;
+        return accessToken;
       }
     } catch (_) {}
     return null;

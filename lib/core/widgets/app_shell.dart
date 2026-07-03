@@ -25,6 +25,15 @@ class AppShell extends ConsumerWidget {
     final navItems = getNavItemsForRole(profile?.role);
     final isWide = ResponsiveBreakpoints.of(context).isDesktop;
 
+    // Auth is still resolving (e.g. a background token refresh, or the
+    // brief window right after a hard page refresh) — profile/navItems
+    // aren't known yet. Render the page content as-is without nav chrome
+    // rather than crash: Material's NavigationBar hard-asserts on having
+    // at least 2 destinations, which too few navItems would violate.
+    if (navItems.length < 2) {
+      return Scaffold(body: child);
+    }
+
     if (isWide) {
       return Scaffold(
         body: Row(

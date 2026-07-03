@@ -42,8 +42,12 @@ final tableSessionProvider =
     FutureProvider.family<TableSession?, String>((ref, tableId) async {
   final response =
       await ApiClient.instance.get(ApiConstants.currentSession(tableId));
-  if (response.data == null) return null;
-  return TableSession.fromJson(response.data as Map<String, dynamic>);
+  // The backend sends a body-less response (no Content-Type) when there's
+  // no current session, which Dio decodes as an empty string rather than
+  // null — so check the type, not just `== null`.
+  final data = response.data;
+  if (data is! Map<String, dynamic>) return null;
+  return TableSession.fromJson(data);
 });
 
 // ─── Reservations ───────────────────────────────────────────────────────────

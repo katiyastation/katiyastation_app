@@ -19,6 +19,8 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
   late TabController _tabs;
   List<Map<String, dynamic>> _staff = [];
   bool _loading = true;
+  bool _addingStaff = false;
+  String? _loadingAttendanceStaffId;
 
   @override
   void initState() { super.initState(); _tabs = TabController(length: 2, vsync: this); _load(); }
@@ -46,7 +48,14 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
       appBar: AppBar(
         title: const Text('Staff Management'),
         actions: [
-          TextButton.icon(icon: const Icon(Icons.person_add_rounded, size: 18), label: const Text('Add Staff'), onPressed: () => _showAddDialog(context)),
+          TextButton.icon(
+            icon: _addingStaff
+                ? const SizedBox(
+                    width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.person_add_rounded, size: 18),
+            label: const Text('Add Staff'),
+            onPressed: _addingStaff ? null : () => _showAddDialog(context),
+          ),
         ],
         bottom: TabBar(
           controller: _tabs,
@@ -97,13 +106,17 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
                       const SizedBox(height: 16),
                       Text('No staff members added', style: GoogleFonts.outfit(color: AppColors.textSecondary)),
                       const SizedBox(height: 12),
-                      ElevatedButton(onPressed: () => _showAddDialog(context), child: const Text('Add First Staff')),
+                      ElevatedButton(
+                        onPressed: _addingStaff ? null : () => _showAddDialog(context),
+                        child: const Text('Add First Staff'),
+                      ),
                     ]))
                   : ListView.builder(
                       padding: const EdgeInsets.all(16),
                       itemCount: _staff.length,
                       itemBuilder: (ctx, i) => _StaffCard(
                         staff: _staff[i],
+                        isLoadingAttendance: _loadingAttendanceStaffId == _staff[i]['id'],
                         onViewAttendance: () => _showAttendanceHistory(context, _staff[i]),
                       ).animate().fadeIn(delay: Duration(milliseconds: i * 30)),
                     ),
@@ -119,15 +132,26 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
   //  (branch is always the manager's own branch; enforced server-side too)
   // ─────────────────────────────────────────────────────────
   Future<void> _showAddDialog(BuildContext context) async {
+    if (_addingStaff) return;
     final profile = ref.read(authNotifierProvider).value;
-    if (profile?.branchId == null) return;
+    if (profile?.branchId == null) {
+      // Your session is still (re)loading — e.g. right after a token
+      // refresh. Silently no-op-ing here is what made this button look
+      // broken; tell the user to try again instead.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Still loading your session — try again in a moment.')),
+      );
+      return;
+    }
     final branchId = profile!.branchId!;
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-    );
+    // Loading state lives on the button itself (spinner + disabled) rather
+    // than as a separate dialog route — a "show a dialog, await a network
+    // call, then Navigator.pop() it" dance is fragile with go_router: if
+    // the router state changes underneath during the await (e.g. a token
+    // refresh triggering a rebuild), the pop can hit the wrong route and
+    // crash the whole navigator instead of just closing a spinner.
+    setState(() => _addingStaff = true);
 
     List<Map<String, dynamic>> eligibleUsers = [];
     try {
@@ -143,8 +167,9 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
       // handled below via empty list
     }
 
+    if (!mounted) return;
+    setState(() => _addingStaff = false);
     if (!context.mounted) return;
-    Navigator.pop(context); // close loading spinner
 
     if (eligibleUsers.isEmpty) {
       showDialog(
@@ -162,7 +187,6 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
       return;
     }
 
-    if (!context.mounted) return;
     final added = await showDialog<bool>(
       context: context,
       builder: (ctx) => _AddStaffDialog(branchId: branchId, eligibleUsers: eligibleUsers),
@@ -174,14 +198,11 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
   //  VIEW ATTENDANCE — manager-facing history for one staff member
   // ─────────────────────────────────────────────────────────
   Future<void> _showAttendanceHistory(BuildContext context, Map<String, dynamic> staff) async {
+    if (_loadingAttendanceStaffId != null) return;
     final staffId = staff['id'] as String;
     final staffName = staff['name'] as String;
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-    );
+    setState(() => _loadingAttendanceStaffId = staffId);
 
     List<Map<String, dynamic>> records = [];
     String? error;
@@ -192,10 +213,10 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
       error = e.toString();
     }
 
+    if (!mounted) return;
+    setState(() => _loadingAttendanceStaffId = null);
     if (!context.mounted) return;
-    Navigator.pop(context);
 
-    if (!context.mounted) return;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -386,8 +407,9 @@ class _AddStaffDialogState extends State<_AddStaffDialog> {
 
 class _StaffCard extends StatelessWidget {
   final Map<String, dynamic> staff;
+  final bool isLoadingAttendance;
   final VoidCallback onViewAttendance;
-  const _StaffCard({required this.staff, required this.onViewAttendance});
+  const _StaffCard({required this.staff, required this.isLoadingAttendance, required this.onViewAttendance});
 
   Color _roleColor(String? role) {
     switch (role) {
@@ -440,9 +462,12 @@ class _StaffCard extends StatelessWidget {
         ]),
         if (isLinked)
           IconButton(
-            icon: const Icon(Icons.fingerprint_rounded, size: 20, color: AppColors.primary),
+            icon: isLoadingAttendance
+                ? const SizedBox(
+                    width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.fingerprint_rounded, size: 20, color: AppColors.primary),
             tooltip: 'View Attendance',
-            onPressed: onViewAttendance,
+            onPressed: isLoadingAttendance ? null : onViewAttendance,
           ),
       ]),
     );
