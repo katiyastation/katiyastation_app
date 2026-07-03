@@ -4,11 +4,14 @@ import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:lottie/lottie.dart';
 import 'package:skeletonizer/skeletonizer.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/utils/responsive_utils.dart';
+import '../../../../core/widgets/thermal_receipt.dart';
 import '../providers/kitchen_provider.dart';
 import '../../../orders/domain/entities/order_entities.dart';
 import '../../../orders/presentation/providers/order_provider.dart';
+import '../../../branches/presentation/providers/branch_provider.dart';
 
 class KitchenScreen extends ConsumerWidget {
   const KitchenScreen({super.key});
@@ -16,6 +19,9 @@ class KitchenScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final kotsAsync = ref.watch(kitchenKotsProvider);
+    // Pre-warm branch info so it's already loaded by the time a KOT ticket
+    // needs to print it.
+    ref.watch(currentBranchProvider);
     final isMobile = context.isMobile;
 
     return Scaffold(
@@ -440,6 +446,19 @@ class _KotCard extends ConsumerWidget {
                   child: Text(_elapsedLabel(),
                       style: GoogleFonts.outfit(fontSize: 10, color: _elapsedColor(), fontWeight: FontWeight.w600)),
                 ),
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(Icons.print_rounded, size: 16, color: AppColors.textSecondary),
+                    tooltip: 'Print KOT',
+                    onPressed: () {
+                      final items = itemsAsync.value ?? const <KotItem>[];
+                      _printKot(context, ref, items);
+                    },
+                  ),
+                ),
               ],
             ),
           ),
@@ -525,6 +544,62 @@ class _KotCard extends ConsumerWidget {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────
+  //  PRINT KOT — kitchen ticket, no prices, real branch name.
+  // ─────────────────────────────────────────────────────────
+  void _printKot(BuildContext context, WidgetRef ref, List<KotItem> items) {
+    final branch = ref.read(currentBranchProvider).value;
+    final dateStr = DateFormat('yyyy-MM-dd HH:mm').format(kot.createdAt);
+
+    showThermalPrintDialog(
+      context,
+      title: 'KOT Print Preview',
+      onPrint: () => showPrintSentSnackbar(context, label: 'KOT sent to kitchen printer!'),
+      receipt: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          receiptBranchHeader(branch),
+          receiptDivider(),
+          const SizedBox(height: 4),
+          Text('KITCHEN ORDER TICKET',
+              textAlign: TextAlign.center, style: receiptStyle(fontSize: 12, weight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          receiptRow('KOT No:', kot.kotNumber, weight: FontWeight.bold),
+          receiptRow('Table:', kot.tableNumber ?? '—'),
+          receiptRow('Waiter:', kot.waiterName ?? '—'),
+          receiptRow('Time:', dateStr),
+          const SizedBox(height: 4),
+          receiptDivider(),
+          const SizedBox(height: 4),
+          if (items.isEmpty)
+            Text('No items', textAlign: TextAlign.center, style: receiptStyle())
+          else
+            ...items.map((item) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('${item.quantity} x ${item.menuItemName}',
+                          style: receiptStyle(fontSize: 13, weight: FontWeight.bold)),
+                      if (item.notes != null && item.notes!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 14),
+                          child: Text('- ${item.notes}', style: receiptStyle(fontSize: 11)),
+                        ),
+                    ],
+                  ),
+                )),
+          if (kot.notes != null && kot.notes!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            receiptDivider(),
+            const SizedBox(height: 4),
+            Text('Note: ${kot.notes}', style: receiptStyle(fontSize: 11)),
+          ],
         ],
       ),
     );

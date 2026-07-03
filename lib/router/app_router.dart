@@ -88,7 +88,7 @@ const List<NavItem> allNavItems = [
   NavItem(label: 'Users', icon: Icons.manage_accounts, activeIcon: Icons.manage_accounts, path: '/users',
       allowedRoles: ['branch_manager']),
   NavItem(label: 'Attendance', icon: Icons.fingerprint, activeIcon: Icons.fingerprint, path: '/attendance',
-      allowedRoles: ['branch_manager', 'cashier', 'waiter', 'kitchen', 'inventory']),
+      allowedRoles: ['cashier', 'waiter', 'kitchen', 'inventory']),
   NavItem(label: 'Reports', icon: Icons.bar_chart, activeIcon: Icons.bar_chart, path: '/reports',
       allowedRoles: ['branch_manager', 'accountant']),
   NavItem(label: 'Settings', icon: Icons.settings, activeIcon: Icons.settings_outlined, path: '/settings',

@@ -13,6 +13,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../../tables/presentation/providers/tables_provider.dart';
 import '../../../dashboard/presentation/screens/dashboard_screen.dart';
 import '../../../payment_history/presentation/screens/payment_history_screen.dart';
+import '../../../branches/presentation/providers/branch_provider.dart';
+import '../../../../core/widgets/thermal_receipt.dart';
 
 // Session billing data provider (KOTs + aggregated items for this session)
 // Public (no leading underscore) so realtime_sync.dart can invalidate it
@@ -139,6 +141,9 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
   Widget build(BuildContext context) {
     final profile = ref.watch(authNotifierProvider).value;
     final tablesAsync = ref.watch(tablesStreamProvider);
+    // Pre-warm branch info (name/address/phone) so it's already loaded by
+    // the time a receipt or KOT ticket needs to print it.
+    ref.watch(currentBranchProvider);
     final isMobile = context.isMobile;
 
     final workspace = Expanded(
@@ -1422,7 +1427,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
                     onPressed: _processing
                         ? null
                         : () => _settleBill(
-                            total, subtotal, serviceCharge, vat, profile),
+                            total, subtotal, serviceCharge, vat, profile, items, data),
                     child: _processing
                         ? const SizedBox(
                             width: 20,
@@ -1497,7 +1502,8 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
   //  SETTLE BILL
   // ─────────────────────────────────────────────────────────
   Future<void> _settleBill(double total, double subtotal,
-      double serviceCharge, double vat, dynamic profile) async {
+      double serviceCharge, double vat, dynamic profile,
+      List items, Map<String, dynamic> data) async {
     if (_selectedSessionId == null || _selectedTableId == null) return;
     setState(() => _processing = true);
     try {
@@ -1517,7 +1523,8 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
           'applyVat': _applyVat,
         },
       );
-      final invoiceNum = (response.data as Map<String, dynamic>)['invoice_number'] as String? ?? '';
+      final bill = response.data as Map<String, dynamic>;
+      final invoiceNum = bill['invoice_number'] as String? ?? '';
 
       ref.invalidate(tablesStreamProvider);
       ref.invalidate(tableSessionProvider(_selectedTableId!));
@@ -1548,6 +1555,13 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
             ),
           ),
         );
+
+        // Show the real, final receipt (actual invoice/bill number,
+        // payment method, amount paid, change) right after settling —
+        // this is the one that matters, the pre-settle "Print Bill"
+        // button is only ever a preview since no invoice exists yet.
+        _printReceipt(bill, items);
+
         setState(() {
           _selectedSessionId = null;
           _selectedTableId = null;
@@ -1577,13 +1591,12 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
   }
 
   // ─────────────────────────────────────────────────────────
-  //  PRINT BILL
+  //  PRINT BILL (pre-settle preview — no invoice number yet)
   // ─────────────────────────────────────────────────────────
   void _printBill(double total, List items, Map<String, dynamic> data) {
     final subtotal = data['subtotal'] as double;
     final serviceCharge = _applyServiceCharge ? subtotal * 0.1 : 0.0;
-    final dateStr =
-        DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now());
+    final dateStr = DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now());
 
     final tables = ref.read(tablesStreamProvider).value ?? [];
     final selectedTable = tables.where((t) => t.id == _selectedTableId).firstOrNull;
@@ -1591,215 +1604,116 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
 
     final sessions = ref.read(activeSessionsStreamProvider).value ?? [];
     final selectedSession = sessions.where((s) => s.id == _selectedSessionId).firstOrNull;
-    final sessionNumber = selectedSession?.sessionNumber ?? (_selectedSessionId != null ? _selectedSessionId!.substring(0, 8) : 'N/A');
+    final sessionNumber = selectedSession?.sessionNumber ??
+        (_selectedSessionId != null ? _selectedSessionId!.substring(0, 8) : 'N/A');
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.transparent,
-        contentPadding: EdgeInsets.zero,
-        content: Container(
-          width: 400,
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.15),
-                blurRadius: 24,
-                offset: const Offset(0, 8),
-              )
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Thermal Print Preview',
-                    style: GoogleFonts.outfit(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.grey[800],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded),
-                    onPressed: () => Navigator.pop(ctx),
-                  ),
-                ],
-              ),
-              const Divider(),
-              const SizedBox(height: 8),
-              Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFAFAFA),
-                  border: Border.all(color: Colors.grey[300]!),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text('KATIYA STATION',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.courierPrime(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black)),
-                    Text('Branch Address, Nepal',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.courierPrime(
-                            fontSize: 11, color: Colors.black)),
-                    Text('Tel: +977-1-XXXXXXXX',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.courierPrime(
-                            fontSize: 11, color: Colors.black)),
-                    const Text(
-                        '- - - - - - - - - - - - - - - - - - - - -',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.black)),
-                    const SizedBox(height: 4),
-                    _receiptRow('Date:', dateStr),
-                    _receiptRow('Table:', tableNumber),
-                    _receiptRow('Session:', sessionNumber),
-                    const SizedBox(height: 4),
-                    const Text(
-                        '- - - - - - - - - - - - - - - - - - - - -',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.black)),
-                    const SizedBox(height: 4),
-                    ...items.map((item) {
-                      final name = item['menu_item_name'] as String;
-                      final qty = item['quantity'] as int;
-                      final price =
-                          (item['unit_price'] as num?)?.toDouble() ?? 0.0;
-                      final itemTotal = price * qty;
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text('$name x$qty',
-                                  style: GoogleFonts.courierPrime(
-                                      fontSize: 12, color: Colors.black)),
-                            ),
-                            Text(fmt.format(itemTotal),
-                                style: GoogleFonts.courierPrime(
-                                    fontSize: 12, color: Colors.black)),
-                          ],
-                        ),
-                      );
-                    }),
-                    const SizedBox(height: 4),
-                    const Text(
-                        '- - - - - - - - - - - - - - - - - - - - -',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.black)),
-                    const SizedBox(height: 4),
-                    _receiptRow('Subtotal:', fmt.format(subtotal)),
-                    if (_applyServiceCharge)
-                      _receiptRow('Service (10%):',
-                          fmt.format(serviceCharge)),
-                    if (_discount > 0)
-                      _receiptRow('Discount:', '-${fmt.format(_discount)}'),
-                    // VAT section removed
-                    const SizedBox(height: 4),
-                    const Text(
-                        '- - - - - - - - - - - - - - - - - - - - -',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.black)),
-                    const SizedBox(height: 4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('TOTAL:',
-                            style: GoogleFonts.courierPrime(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black)),
-                        Text('NPR ${fmt.format(total)}',
-                            style: GoogleFonts.courierPrime(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.black)),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text('Thank you for dining with us!',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.courierPrime(
-                            fontSize: 11, color: Colors.black)),
-                    Text('Powered by Katiya Station RMS',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.courierPrime(
-                            fontSize: 9, color: Colors.black)),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.print_rounded, size: 16),
-                    label: const Text('Print Now'),
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          backgroundColor: AppColors.success,
-                          behavior: SnackBarBehavior.floating,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
-                          margin: const EdgeInsets.all(16),
-                          content: Row(
-                            children: [
-                              const Icon(Icons.print_rounded,
-                                  color: Colors.white, size: 16),
-                              const SizedBox(width: 10),
-                              Text(
-                                'Print command sent to ESC/POS thermal printer!',
-                                style: GoogleFonts.outfit(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+    final branch = ref.read(currentBranchProvider).value;
+
+    showThermalPrintDialog(
+      context,
+      title: 'Thermal Print Preview',
+      onPrint: () => showPrintSentSnackbar(context),
+      receipt: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          receiptBranchHeader(branch),
+          receiptDivider(),
+          const SizedBox(height: 4),
+          receiptRow('Date:', dateStr),
+          receiptRow('Table:', tableNumber),
+          receiptRow('Session:', sessionNumber),
+          if (_customerName != null) receiptRow('Customer:', _customerName!),
+          const SizedBox(height: 4),
+          receiptDivider(),
+          const SizedBox(height: 4),
+          ...items.map((item) {
+            final name = item['menu_item_name'] as String;
+            final qty = item['quantity'] as int;
+            final price = (item['unit_price'] as num?)?.toDouble() ?? 0.0;
+            return receiptRow('$name x$qty', fmt.format(price * qty), fontSize: 12);
+          }),
+          const SizedBox(height: 4),
+          receiptDivider(),
+          const SizedBox(height: 4),
+          receiptRow('Subtotal:', fmt.format(subtotal)),
+          if (_applyServiceCharge) receiptRow('Service (10%):', fmt.format(serviceCharge)),
+          if (_discount > 0) receiptRow('Discount:', '-${fmt.format(_discount)}'),
+          const SizedBox(height: 4),
+          receiptDivider(),
+          const SizedBox(height: 4),
+          receiptRow('TOTAL:', 'NPR ${fmt.format(total)}', fontSize: 14, weight: FontWeight.bold),
+          const SizedBox(height: 8),
+          Text('*** PREVIEW — not a valid receipt ***',
+              textAlign: TextAlign.center, style: receiptStyle(fontSize: 9)),
+        ],
       ),
     );
   }
 
-  Widget _receiptRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+  // ─────────────────────────────────────────────────────────
+  //  PRINT RECEIPT — the real, final receipt after a bill is settled,
+  //  built from the backend's actual invoice/bill numbers and totals.
+  // ─────────────────────────────────────────────────────────
+  void _printReceipt(Map<String, dynamic> bill, List items) {
+    final branch = ref.read(currentBranchProvider).value;
+    final dateStr = DateFormat('yyyy-MM-dd HH:mm')
+        .format(DateTime.tryParse(bill['created_at'] as String? ?? '') ?? DateTime.now());
+
+    final subtotal = (bill['sub_total'] as num?)?.toDouble() ?? 0;
+    final discount = (bill['discount'] as num?)?.toDouble() ?? 0;
+    final serviceCharge = (bill['service_charge'] as num?)?.toDouble() ?? 0;
+    final vatAmount = (bill['vat_amount'] as num?)?.toDouble() ?? 0;
+    final totalAmount = (bill['total_amount'] as num?)?.toDouble() ?? 0;
+    final amountPaid = (bill['amount_paid'] as num?)?.toDouble() ?? 0;
+    final changeAmount = (bill['change_amount'] as num?)?.toDouble() ?? 0;
+    final paymentMethod = (bill['payment_method'] as String? ?? '').toUpperCase();
+    final customerName = bill['customer_name'] as String?;
+    final cashierName = bill['cashier_name'] as String?;
+
+    showThermalPrintDialog(
+      context,
+      title: 'Receipt',
+      onPrint: () => showPrintSentSnackbar(context, label: 'Receipt sent to thermal printer!'),
+      receipt: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(label,
-              style: GoogleFonts.courierPrime(
-                  fontSize: 11, color: Colors.black)),
-          Text(value,
-              style: GoogleFonts.courierPrime(
-                  fontSize: 11, color: Colors.black)),
+          receiptBranchHeader(branch),
+          receiptDivider(),
+          const SizedBox(height: 4),
+          receiptRow('Invoice No:', bill['invoice_number'] as String? ?? '—', weight: FontWeight.bold),
+          receiptRow('Bill No:', bill['bill_number'] as String? ?? '—'),
+          receiptRow('Date:', dateStr),
+          if (cashierName != null) receiptRow('Cashier:', cashierName),
+          if (customerName != null) receiptRow('Customer:', customerName),
+          const SizedBox(height: 4),
+          receiptDivider(),
+          const SizedBox(height: 4),
+          ...items.map((item) {
+            final name = item['menu_item_name'] as String;
+            final qty = item['quantity'] as int;
+            final price = (item['unit_price'] as num?)?.toDouble() ?? 0.0;
+            return receiptRow('$name x$qty', fmt.format(price * qty), fontSize: 12);
+          }),
+          const SizedBox(height: 4),
+          receiptDivider(),
+          const SizedBox(height: 4),
+          receiptRow('Subtotal:', fmt.format(subtotal)),
+          if (serviceCharge > 0) receiptRow('Service Charge:', fmt.format(serviceCharge)),
+          if (discount > 0) receiptRow('Discount:', '-${fmt.format(discount)}'),
+          if (vatAmount > 0) receiptRow('VAT:', fmt.format(vatAmount)),
+          const SizedBox(height: 4),
+          receiptDivider(),
+          const SizedBox(height: 4),
+          receiptRow('TOTAL:', 'NPR ${fmt.format(totalAmount)}', fontSize: 14, weight: FontWeight.bold),
+          const SizedBox(height: 4),
+          receiptRow('Payment Method:', paymentMethod),
+          receiptRow('Amount Paid:', fmt.format(amountPaid)),
+          if (changeAmount > 0) receiptRow('Change:', fmt.format(changeAmount)),
+          const SizedBox(height: 8),
+          Text('Thank you for dining with us!',
+              textAlign: TextAlign.center, style: receiptStyle()),
+          Text('Powered by Katiya Station RMS',
+              textAlign: TextAlign.center, style: receiptStyle(fontSize: 9)),
         ],
       ),
     );
