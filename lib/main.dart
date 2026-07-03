@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:responsive_framework/responsive_framework.dart';
@@ -23,21 +24,26 @@ void main() async {
   // ── 1. Initialize Dio API Client ──────────────────────────
   ApiClient.instance.initialize();
 
-  // ── 2. Initialize Firebase (FCM) ──────────────────────────
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  // ── 2. Initialize Firebase (FCM) — best-effort ─────────────
+  // Push notifications are a nice-to-have layered on top of a fully
+  // functional POS; they must never be able to stop the app from
+  // launching. Until real Firebase credentials are configured (see
+  // firebase_options.dart), this fails fast and cleanly on Android/iOS —
+  // without this guard that failure happens before runApp() and takes
+  // the whole app down with it.
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-  // ── 3. Request notification permissions ───────────────────
-  final messaging = FirebaseMessaging.instance;
-  await messaging.requestPermission(
-    alert: true,
-    badge: true,
-    sound: true,
-  );
+    final messaging = FirebaseMessaging.instance;
+    await messaging.requestPermission(alert: true, badge: true, sound: true);
+  } catch (e) {
+    if (kDebugMode) {
+      debugPrint('[Firebase] Init failed — push notifications disabled: $e');
+    }
+  }
 
-  // ── 4. Launch App ─────────────────────────────────────────
+  // ── 3. Launch App ─────────────────────────────────────────
   runApp(const ProviderScope(child: KatiyaStationApp()));
 }
 

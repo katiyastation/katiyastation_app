@@ -37,7 +37,15 @@ class ApiClient {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         },
-        validateStatus: (status) => status != null && status < 500,
+        // Only treat 2xx as success. The previous `status < 500` here
+        // silently treated 401/403/404/409/422 as "successful" responses
+        // (Dio never throws, so onError/_mapDioError never runs) — which
+        // meant an expired access token never triggered the refresh
+        // interceptor below at all: /auth/me would just come back with
+        // the 401 error body parsed as if it were a real profile, hit
+        // the "invalid" branch, and log the user out immediately instead
+        // of silently refreshing. That's likely the actual cause of the
+        // session-timeout/auto-logout behavior reported.
       ),
     );
 

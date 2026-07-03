@@ -7,6 +7,7 @@ import 'package:skeletonizer/skeletonizer.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 class StaffScreen extends ConsumerStatefulWidget {
@@ -222,7 +223,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
       builder: (ctx) => AlertDialog(
         title: Text('$staffName — Attendance'),
         content: SizedBox(
-          width: 380,
+          width: ctx.dialogWidth(380),
           child: error != null
               ? Text('Error: $error', style: const TextStyle(color: AppColors.error))
               : records.isEmpty

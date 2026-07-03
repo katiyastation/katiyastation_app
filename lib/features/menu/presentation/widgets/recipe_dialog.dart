@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../domain/entities/menu_entities.dart';
 
@@ -180,7 +181,7 @@ class _RecipeDialogState extends ConsumerState<RecipeDialog> {
               child: Center(child: CircularProgressIndicator(color: AppColors.primary)),
             )
           : SizedBox(
-              width: 500,
+              width: context.dialogWidth(500),
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,

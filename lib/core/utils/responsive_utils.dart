@@ -31,4 +31,11 @@ extension ResponsiveContext on BuildContext {
 
   /// Screen height shorthand.
   double get screenHeight => MediaQuery.sizeOf(this).height;
+
+  /// Caps a desktop-sized dialog/panel width at the actual viewport width
+  /// (minus [margin] for the dialog's own inset padding on each side) so a
+  /// fixed `width: 400`-style value doesn't overflow on a phone.
+  double dialogWidth(double preferred, {double margin = 48}) {
+    return preferred < screenWidth - margin ? preferred : screenWidth - margin;
+  }
 }

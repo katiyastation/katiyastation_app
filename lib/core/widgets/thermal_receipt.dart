@@ -5,6 +5,8 @@
 // consistent instead of duplicating markup.
 // ============================================================
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../constants/app_colors.dart';
@@ -22,8 +24,13 @@ void showThermalPrintDialog(
     builder: (ctx) => AlertDialog(
       backgroundColor: Colors.transparent,
       contentPadding: EdgeInsets.zero,
+      insetPadding: const EdgeInsets.all(16),
       content: Container(
-        width: 400,
+        // Cap at 400 on wide screens but never exceed the actual viewport
+        // width — a fixed 400 would overflow horizontally on a phone
+        // (~360-390 logical px wide).
+        width: math.min(400, MediaQuery.sizeOf(ctx).width - 32),
+        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * 0.85),
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -53,14 +60,18 @@ void showThermalPrintDialog(
             ),
             const Divider(),
             const SizedBox(height: 8),
-            Container(
-              decoration: BoxDecoration(
-                color: const Color(0xFFFAFAFA),
-                border: Border.all(color: Colors.grey[300]!),
-                borderRadius: BorderRadius.circular(8),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFAFAFA),
+                    border: Border.all(color: Colors.grey[300]!),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  padding: const EdgeInsets.all(16),
+                  child: receipt,
+                ),
               ),
-              padding: const EdgeInsets.all(16),
-              child: receipt,
             ),
             const SizedBox(height: 16),
             Row(

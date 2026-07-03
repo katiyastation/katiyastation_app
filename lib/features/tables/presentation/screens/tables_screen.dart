@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/tables_provider.dart';
 import '../../domain/entities/table_entities.dart';
@@ -283,7 +284,7 @@ class _TablesScreenState extends ConsumerState<TablesScreen>
           ],
         ),
         content: SizedBox(
-          width: 320,
+          width: ctx.dialogWidth(320),
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -477,7 +478,10 @@ class _TablesScreenState extends ConsumerState<TablesScreen>
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: Text('Transfer to Table',
               style: GoogleFonts.outfit(fontWeight: FontWeight.w700)),
-          content: Column(
+          content: SizedBox(
+            width: ctx.dialogWidth(400),
+            child: SingleChildScrollView(
+              child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text('Move session ${session.sessionNumber} from '
@@ -528,6 +532,8 @@ class _TablesScreenState extends ConsumerState<TablesScreen>
                 }).toList(),
               ),
             ],
+          ),
+            ),
           ),
           actions: [
             TextButton(
@@ -588,7 +594,10 @@ class _TablesScreenState extends ConsumerState<TablesScreen>
           backgroundColor: AppColors.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: Text('Merge Table', style: GoogleFonts.outfit(fontWeight: FontWeight.w700)),
-          content: Column(
+          content: SizedBox(
+            width: ctx.dialogWidth(400),
+            child: SingleChildScrollView(
+              child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -624,6 +633,8 @@ class _TablesScreenState extends ConsumerState<TablesScreen>
                 }).toList(),
               ),
             ],
+          ),
+            ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
@@ -710,7 +721,7 @@ class _TablesScreenState extends ConsumerState<TablesScreen>
                 }
                 return StatefulBuilder(
                   builder: (ctx, setLocal) => SizedBox(
-                    width: 320,
+                    width: ctx.dialogWidth(320),
                     child: SingleChildScrollView(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -1543,10 +1554,13 @@ class _ReservationsTabState extends ConsumerState<_ReservationsTab> {
                       fontSize: 12, color: AppColors.textSecondary)),
             ],
           ),
-          content: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: availableTables.map((t) {
+          content: SizedBox(
+            width: ctx.dialogWidth(400),
+            child: SingleChildScrollView(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: availableTables.map((t) {
               final isSelected = t.id == selectedId;
               return GestureDetector(
                 onTap: () => setLocal(() => selectedId = t.id),
@@ -1579,6 +1593,8 @@ class _ReservationsTabState extends ConsumerState<_ReservationsTab> {
                 ),
               );
             }).toList(),
+              ),
+            ),
           ),
           actions: [
             TextButton(

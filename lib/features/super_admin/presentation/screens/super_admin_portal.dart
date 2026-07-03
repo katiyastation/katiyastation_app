@@ -10,6 +10,7 @@ import 'package:excel/excel.dart' hide Border, BorderStyle;
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../../../../core/widgets/reset_password_dialog.dart';
 
 final allUsersProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
@@ -234,7 +235,7 @@ class _SuperAdminPortalState extends ConsumerState<SuperAdminPortal>
                 style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
           ]),
           content: SizedBox(
-            width: 400,
+            width: ctx.dialogWidth(400),
             child: SingleChildScrollView(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 TextField(
@@ -370,8 +371,9 @@ class _SuperAdminPortalState extends ConsumerState<SuperAdminPortal>
           title: Text('Edit — ${user['full_name']}',
               style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
           content: SizedBox(
-            width: 380,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
+            width: ctx.dialogWidth(380),
+            child: SingleChildScrollView(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
               TextField(
                 controller: nameCtrl,
                 decoration: const InputDecoration(labelText: 'Full Name'),
@@ -406,6 +408,7 @@ class _SuperAdminPortalState extends ConsumerState<SuperAdminPortal>
                 ),
               ),
             ]),
+            ),
           ),
           actions: [
             TextButton(
