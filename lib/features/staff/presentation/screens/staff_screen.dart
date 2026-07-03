@@ -22,6 +22,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
   bool _loading = true;
   bool _addingStaff = false;
   String? _loadingAttendanceStaffId;
+  String? _deletingStaffId;
 
   @override
   void initState() { super.initState(); _tabs = TabController(length: 2, vsync: this); _load(); }
@@ -37,7 +38,9 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
       queryParameters: {'branchId': profile!.branchId!},
     );
     final data = response.data as Map<String, dynamic>;
-    final rows = List<Map<String, dynamic>>.from(data['data'] as List? ?? []);
+    final rows = List<Map<String, dynamic>>.from(data['data'] as List? ?? [])
+        .where((s) => (s['status'] as String?) != 'terminated')
+        .toList();
     rows.sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
     if (mounted) setState(() { _staff = rows; _loading = false; });
   }
@@ -118,7 +121,10 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
                       itemBuilder: (ctx, i) => _StaffCard(
                         staff: _staff[i],
                         isLoadingAttendance: _loadingAttendanceStaffId == _staff[i]['id'],
+                        isDeleting: _deletingStaffId == _staff[i]['id'],
                         onViewAttendance: () => _showAttendanceHistory(context, _staff[i]),
+                        onEdit: () => _showEditDialog(context, _staff[i]),
+                        onDelete: () => _deleteStaff(context, _staff[i]),
                       ).animate().fadeIn(delay: Duration(milliseconds: i * 30)),
                     ),
           // Salary tab
@@ -193,6 +199,67 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
       builder: (ctx) => _AddStaffDialog(branchId: branchId, eligibleUsers: eligibleUsers),
     );
     if (added == true) _load();
+  }
+
+  // ─────────────────────────────────────────────────────────
+  //  EDIT STAFF — update name, phone, role, salary
+  // ─────────────────────────────────────────────────────────
+  Future<void> _showEditDialog(BuildContext context, Map<String, dynamic> staff) async {
+    final updated = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => _EditStaffDialog(staff: staff),
+    );
+    if (updated == true) _load();
+  }
+
+  // ─────────────────────────────────────────────────────────
+  //  DELETE STAFF — soft-delete via status: 'terminated' so
+  //  attendance & payroll history stay intact for reporting.
+  // ─────────────────────────────────────────────────────────
+  Future<void> _deleteStaff(BuildContext context, Map<String, dynamic> staff) async {
+    if (_deletingStaffId != null) return;
+    final staffId = staff['id'] as String;
+    final staffName = staff['name'] as String;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Staff Member'),
+        content: Text(
+          'Remove "$staffName" from the active staff list? Their attendance and salary '
+          'history will be preserved for reporting, and this can be undone by re-adding them.',
+          style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+
+    setState(() => _deletingStaffId = staffId);
+    try {
+      await ApiClient.instance.patch(
+        ApiConstants.staffById(staffId),
+        data: {'status': 'terminated'},
+      );
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _deletingStaffId = null);
+    }
   }
 
   // ─────────────────────────────────────────────────────────
@@ -406,11 +473,125 @@ class _AddStaffDialogState extends State<_AddStaffDialog> {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+//  EDIT STAFF DIALOG — updates name, phone, role, salary
+// ═══════════════════════════════════════════════════════════════════════
+class _EditStaffDialog extends StatefulWidget {
+  final Map<String, dynamic> staff;
+  const _EditStaffDialog({required this.staff});
+
+  @override
+  State<_EditStaffDialog> createState() => _EditStaffDialogState();
+}
+
+class _EditStaffDialogState extends State<_EditStaffDialog> {
+  late final _nameCtrl = TextEditingController(text: widget.staff['name'] as String? ?? '');
+  late final _phoneCtrl = TextEditingController(text: widget.staff['phone'] as String? ?? '');
+  late final _salaryCtrl =
+      TextEditingController(text: ((widget.staff['salary'] as num?)?.toString() ?? ''));
+  late String _role = widget.staff['role'] as String? ?? 'waiter';
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _phoneCtrl.dispose();
+    _salaryCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_nameCtrl.text.trim().isEmpty) return;
+    setState(() => _submitting = true);
+    try {
+      await ApiClient.instance.patch(
+        ApiConstants.staffById(widget.staff['id'] as String),
+        data: {
+          'name': _nameCtrl.text.trim(),
+          'phone': _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
+          'role': _role,
+          'salary': double.tryParse(_salaryCtrl.text) ?? 0,
+        },
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      setState(() => _submitting = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit Staff Member'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _nameCtrl,
+              decoration: const InputDecoration(labelText: 'Name *'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _phoneCtrl,
+              decoration: const InputDecoration(labelText: 'Phone'),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: _role,
+              decoration: const InputDecoration(labelText: 'Role'),
+              onChanged: (v) => setState(() => _role = v!),
+              items: const [
+                DropdownMenuItem(value: 'cashier', child: Text('Cashier')),
+                DropdownMenuItem(value: 'waiter', child: Text('Waiter')),
+                DropdownMenuItem(value: 'kitchen', child: Text('Kitchen Staff')),
+                DropdownMenuItem(value: 'inventory', child: Text('Inventory Manager')),
+                DropdownMenuItem(value: 'accountant', child: Text('Accountant')),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _salaryCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Monthly Salary (NPR)'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: _submitting ? null : _submit,
+          child: _submitting
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
 class _StaffCard extends StatelessWidget {
   final Map<String, dynamic> staff;
   final bool isLoadingAttendance;
+  final bool isDeleting;
   final VoidCallback onViewAttendance;
-  const _StaffCard({required this.staff, required this.isLoadingAttendance, required this.onViewAttendance});
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+  const _StaffCard({
+    required this.staff,
+    required this.isLoadingAttendance,
+    required this.isDeleting,
+    required this.onViewAttendance,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   Color _roleColor(String? role) {
     switch (role) {
@@ -470,6 +651,28 @@ class _StaffCard extends StatelessWidget {
             tooltip: 'View Attendance',
             onPressed: isLoadingAttendance ? null : onViewAttendance,
           ),
+        isDeleting
+            ? const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+              )
+            : PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert_rounded, color: AppColors.textSecondary, size: 20),
+                onSelected: (val) {
+                  if (val == 'edit') {
+                    onEdit();
+                  } else if (val == 'delete') {
+                    onDelete();
+                  }
+                },
+                itemBuilder: (ctx) => [
+                  const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Text('Delete', style: TextStyle(color: AppColors.error)),
+                  ),
+                ],
+              ),
       ]),
     );
   }

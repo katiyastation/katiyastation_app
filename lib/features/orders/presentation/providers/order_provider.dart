@@ -37,6 +37,21 @@ final menuItemsProvider =
     ..sort((a, b) => a.name.compareTo(b.name));
 });
 
+// All menu items across every category for a branch — used by menu search
+final allMenuItemsProvider =
+    FutureProvider.family<List<MenuItem>, String>((ref, branchId) async {
+  final response = await ApiClient.instance.get(
+    ApiConstants.menuItems,
+    queryParameters: {'branchId': branchId},
+  );
+  final rows = response.data as List<dynamic>;
+  return rows
+      .map((r) => MenuItem.fromJson(r as Map<String, dynamic>))
+      .where((i) => i.isAvailable)
+      .toList()
+    ..sort((a, b) => a.name.compareTo(b.name));
+});
+
 // KOTs for a session
 final sessionKotsProvider =
     FutureProvider.family<List<KotWithItems>, String>((ref, sessionId) async {

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../menu/domain/entities/menu_entities.dart';
 import '../widgets/recipe_dialog.dart';
@@ -37,6 +38,19 @@ final menuItemsByCatProvider =
     ..sort((a, b) => a.name.compareTo(b.name));
 });
 
+// All items across every category for the branch — used by menu search
+final menuItemsAllProvider = FutureProvider<List<MenuItem>>((ref) async {
+  final profile = ref.watch(authNotifierProvider).value;
+  if (profile?.branchId == null) return [];
+  final response = await ApiClient.instance.get(
+    ApiConstants.menuItems,
+    queryParameters: {'branchId': profile!.branchId!},
+  );
+  final rows = response.data as List<dynamic>;
+  return rows.map((r) => MenuItem.fromJson(r as Map<String, dynamic>)).toList()
+    ..sort((a, b) => a.name.compareTo(b.name));
+});
+
 class MenuManagementScreen extends ConsumerStatefulWidget {
   const MenuManagementScreen({super.key});
   @override
@@ -45,6 +59,14 @@ class MenuManagementScreen extends ConsumerStatefulWidget {
 
 class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
   String? _selectedCatId;
+  final _searchCtrl = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -147,19 +169,71 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
                   ],
                 ),
               ),
-              // Main content - items
+              // Main content - search + items
               Expanded(
-                child: _selectedCatId == null
-                    ? const Center(child: Text('Select a category', style: TextStyle(color: AppColors.textSecondary)))
-                    : _ItemsGrid(
-                        catId: _selectedCatId!,
-                        onEdit: (item) => _showItemDialog(context, item),
-                        onDelete: (id) => _deleteItem(id),
-                      ),
+                child: Column(
+                  children: [
+                    _buildSearchBar(),
+                    Expanded(
+                      child: _searchQuery.trim().isNotEmpty
+                          ? _SearchItemsGrid(
+                              query: _searchQuery,
+                              categories: cats,
+                              onEdit: (item) => _showItemDialog(context, item),
+                              onDelete: (id) => _deleteItem(id),
+                            )
+                          : (_selectedCatId == null
+                              ? const Center(
+                                  child: Text('Select a category', style: TextStyle(color: AppColors.textSecondary)))
+                              : _ItemsGrid(
+                                  catId: _selectedCatId!,
+                                  onEdit: (item) => _showItemDialog(context, item),
+                                  onDelete: (id) => _deleteItem(id),
+                                )),
+                    ),
+                  ],
+                ),
               ),
             ],
           );
         },
+      ),
+    );
+  }
+
+  /// Search bar for filtering menu items by name, price, or category
+  Widget _buildSearchBar() {
+    return Container(
+      color: AppColors.surface,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: TextField(
+        controller: _searchCtrl,
+        style: GoogleFonts.outfit(fontSize: 14, color: AppColors.textPrimary),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: 'Search menu by name, price or category',
+          hintStyle: GoogleFonts.outfit(fontSize: 13, color: AppColors.textHint),
+          prefixIcon: const Icon(Icons.search_rounded, color: AppColors.textSecondary, size: 20),
+          suffixIcon: _searchQuery.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 18, color: AppColors.textSecondary),
+                  onPressed: () {
+                    _searchCtrl.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                ),
+          filled: true,
+          fillColor: AppColors.surfaceVariant,
+          contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppColors.primary, width: 1.4),
+          ),
+        ),
+        onChanged: (v) => setState(() => _searchQuery = v),
       ),
     );
   }
@@ -254,23 +328,25 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
                 if (profile?.branchId == null) {
                   throw Exception('Branch ID not found in user profile. Cannot save item.');
                 }
+                final targetCatId = existing?.categoryId ?? _selectedCatId;
                 final data = {
                   'branchId': profile!.branchId,
-                  'categoryId': _selectedCatId,
+                  'categoryId': targetCatId,
                   'name': nameCtrl.text.trim(),
                   'price': double.tryParse(priceCtrl.text) ?? 0,
                   'imageUrl': imageUrlCtrl.text.trim().isEmpty ? null : imageUrlCtrl.text.trim(),
                   'description': descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
-                  'isAvailable': true,
+                  'isAvailable': existing?.isAvailable ?? true,
                 };
                 if (existing == null) {
                   await ApiClient.instance.post(ApiConstants.menuItems, data: data);
                 } else {
                   await ApiClient.instance.patch(ApiConstants.menuItemById(existing.id), data: data);
                 }
-                if (_selectedCatId != null) {
-                  ref.invalidate(menuItemsByCatProvider(_selectedCatId!));
+                if (targetCatId != null) {
+                  ref.invalidate(menuItemsByCatProvider(targetCatId));
                 }
+                ref.invalidate(menuItemsAllProvider);
                 if (context.mounted) Navigator.pop(ctx);
               } catch (e) {
                 scaffoldMessenger.showSnackBar(
@@ -397,6 +473,7 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
     if (_selectedCatId != null) {
       ref.invalidate(menuItemsByCatProvider(_selectedCatId!));
     }
+    ref.invalidate(menuItemsAllProvider);
   }
 }
 
@@ -418,19 +495,86 @@ class _ItemsGrid extends ConsumerWidget {
               const SizedBox(height: 12),
               Text('No items in this category', style: GoogleFonts.outfit(color: AppColors.textSecondary)),
             ]))
-          : GridView.builder(
-              padding: const EdgeInsets.all(16),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 240, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: 1.3,
-              ),
-              itemCount: items.length,
-              itemBuilder: (ctx, i) => _MenuItemCard(
-                item: items[i],
-                ref: ref,
-                onEdit: () => onEdit(items[i]),
-                onDelete: () => onDelete(items[i].id),
-              ).animate().fadeIn(delay: Duration(milliseconds: i * 30)).scale(begin: const Offset(0.95, 0.95)),
-            ),
+          : _ItemsGridView(items: items, ref: ref, onEdit: onEdit, onDelete: onDelete),
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Search results across every category — filters by name, price, or category
+// ════════════════════════════════════════════════════════════════════════════
+class _SearchItemsGrid extends ConsumerWidget {
+  final String query;
+  final List<MenuCategory> categories;
+  final ValueChanged<MenuItem> onEdit;
+  final ValueChanged<String> onDelete;
+  const _SearchItemsGrid({
+    required this.query,
+    required this.categories,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final itemsAsync = ref.watch(menuItemsAllProvider);
+    final q = query.trim().toLowerCase();
+
+    return itemsAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      error: (e, _) => Center(child: Text('Error: $e')),
+      data: (items) {
+        final catNameById = {for (final c in categories) c.id: c.name.toLowerCase()};
+        final filtered = items.where((item) {
+          final nameMatch = item.name.toLowerCase().contains(q);
+          final categoryMatch = (catNameById[item.categoryId] ?? '').contains(q);
+          final priceMatch =
+              item.price.toStringAsFixed(0).contains(q) || item.price.toStringAsFixed(2).contains(q);
+          return nameMatch || categoryMatch || priceMatch;
+        }).toList();
+
+        if (filtered.isEmpty) {
+          return Center(
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              const Icon(Icons.search_off_rounded, size: 56, color: AppColors.textHint),
+              const SizedBox(height: 12),
+              Text('No items match "$query"', style: GoogleFonts.outfit(color: AppColors.textSecondary)),
+            ]),
+          );
+        }
+        return _ItemsGridView(items: filtered, ref: ref, onEdit: onEdit, onDelete: onDelete);
+      },
+    );
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Shared grid layout for a resolved list of menu items
+// ════════════════════════════════════════════════════════════════════════════
+class _ItemsGridView extends StatelessWidget {
+  final List<MenuItem> items;
+  final WidgetRef ref;
+  final ValueChanged<MenuItem> onEdit;
+  final ValueChanged<String> onDelete;
+  const _ItemsGridView({required this.items, required this.ref, required this.onEdit, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: context.responsiveValue(mobile: 180, tablet: 210, desktop: 240),
+        crossAxisSpacing: 14,
+        mainAxisSpacing: 14,
+        childAspectRatio: 0.8,
+      ),
+      itemCount: items.length,
+      itemBuilder: (ctx, i) => _MenuItemCard(
+        item: items[i],
+        ref: ref,
+        onEdit: () => onEdit(items[i]),
+        onDelete: () => onDelete(items[i].id),
+      ).animate().fadeIn(delay: Duration(milliseconds: i * 30)).scale(begin: const Offset(0.95, 0.95)),
     );
   }
 }
@@ -450,53 +594,75 @@ class _MenuItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fmt = NumberFormat('#,##0');
+    final hasImage = item.imageUrl != null && item.imageUrl!.isNotEmpty;
     return Container(
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AppColors.card,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: item.isAvailable ? AppColors.border : AppColors.error.withValues(alpha: 0.3)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4)),
+        ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Stack(
             children: [
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
-                child: item.imageUrl != null && item.imageUrl!.isNotEmpty
+              AspectRatio(
+                aspectRatio: 1.35,
+                child: hasImage
                     ? Image.network(
                         item.imageUrl!,
-                        height: 64,
-                        width: double.infinity,
                         fit: BoxFit.cover,
+                        loadingBuilder: (ctx, child, progress) {
+                          if (progress == null) return child;
+                          return Container(
+                            color: AppColors.surfaceVariant,
+                            child: const Center(
+                              child: SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                              ),
+                            ),
+                          );
+                        },
                         errorBuilder: (_, __, ___) => _placeholder(),
                       )
                     : _placeholder(),
               ),
               Positioned(
-                top: 4,
-                right: 4,
-                child: PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert_rounded, color: AppColors.textSecondary, size: 18),
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  onSelected: (val) {
-                    if (val == 'edit') {
-                      onEdit();
-                    } else if (val == 'recipe') {
-                      showDialog(
-                        context: context,
-                        builder: (ctx) => RecipeDialog(item: item),
-                      );
-                    } else if (val == 'delete') {
-                      onDelete();
-                    }
-                  },
-                  itemBuilder: (ctx) => [
-                    const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                    const PopupMenuItem(value: 'recipe', child: Text('Recipe')),
-                    const PopupMenuItem(value: 'delete', child: Text('Delete')),
-                  ],
+                top: 6,
+                right: 6,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert_rounded, color: Colors.white, size: 18),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onSelected: (val) {
+                      if (val == 'edit') {
+                        onEdit();
+                      } else if (val == 'recipe') {
+                        showDialog(
+                          context: context,
+                          builder: (ctx) => RecipeDialog(item: item),
+                        );
+                      } else if (val == 'delete') {
+                        onDelete();
+                      }
+                    },
+                    itemBuilder: (ctx) => [
+                      const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                      const PopupMenuItem(value: 'recipe', child: Text('Recipe')),
+                      const PopupMenuItem(value: 'delete', child: Text('Delete')),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -508,8 +674,12 @@ class _MenuItemCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(item.name, style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  Text('NPR ${fmt.format(item.price)}', style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary)),
+                  Text(item.name,
+                      style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                  Text('NPR ${fmt.format(item.price)}',
+                      style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary)),
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -526,6 +696,7 @@ class _MenuItemCard extends StatelessWidget {
                           data: {'isAvailable': !item.isAvailable},
                         );
                         ref.invalidate(menuItemsByCatProvider(item.categoryId));
+                        ref.invalidate(menuItemsAllProvider);
                       },
                       child: Icon(item.isAvailable ? Icons.toggle_on_rounded : Icons.toggle_off_rounded,
                           color: item.isAvailable ? AppColors.success : AppColors.textHint, size: 22),
@@ -542,10 +713,14 @@ class _MenuItemCard extends StatelessWidget {
 
   Widget _placeholder() {
     return Container(
-      height: 64,
-      width: double.infinity,
-      color: AppColors.primary.withValues(alpha: 0.05),
-      child: const Icon(Icons.restaurant_menu_rounded, color: AppColors.primary, size: 24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [AppColors.primary.withValues(alpha: 0.10), AppColors.primary.withValues(alpha: 0.03)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: const Center(child: Icon(Icons.restaurant_menu_rounded, color: AppColors.primary, size: 26)),
     );
   }
 }
