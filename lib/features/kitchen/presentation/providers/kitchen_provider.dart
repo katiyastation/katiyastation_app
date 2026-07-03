@@ -82,26 +82,57 @@ class KitchenNotifier extends StateNotifier<AsyncValue<void>> {
     }
   }
 
-  // ── Mark individual item as ready ─────────────────────────
-  Future<void> updateItemStatus(
+  // ── Mark individual item's own status (pending/preparing/ready/served/cancelled) ──
+  // Returns an error message on failure (e.g. the 403 "ask a manager"
+  // guard once the KOT has left pending), or null on success, so the UI
+  // can show it without relying on this notifier's shared AsyncValue state.
+  Future<String?> updateItemStatus(
     String kotId,
     String itemId,
     String newStatus,
   ) async {
     try {
       await ApiClient.instance.patch(
-        '${ApiConstants.kotItems(kotId)}/$itemId/status',
+        ApiConstants.updateKotItemStatus(kotId, itemId),
         data: {'status': newStatus},
       );
       _ref.invalidate(kotItemsProvider(kotId));
+      _ref.invalidate(kitchenKotsProvider);
+      return null;
     } catch (e) {
-      state = AsyncValue.error(e.toString(), StackTrace.current);
+      return e.toString();
     }
   }
 
   // ── Cancel a KOT item ─────────────────────────────────────
-  Future<void> cancelKotItem(String kotId, String itemId) async {
-    await updateItemStatus(kotId, itemId, 'cancelled');
+  Future<String?> cancelKotItem(String kotId, String itemId) {
+    return updateItemStatus(kotId, itemId, 'cancelled');
+  }
+
+  // ── Return a served item (post-serve void, no restock) ────
+  Future<String?> returnItem(String kotId, String itemId, {String? reason}) async {
+    try {
+      await ApiClient.instance.post(
+        ApiConstants.returnKotItem(kotId, itemId),
+        data: {if (reason != null && reason.isNotEmpty) 'reason': reason},
+      );
+      _ref.invalidate(kotItemsProvider(kotId));
+      _ref.invalidate(kitchenKotsProvider);
+      return null;
+    } catch (e) {
+      return e.toString();
+    }
+  }
+
+  // ── Record a KOT print (first print or reprint) ───────────
+  Future<void> recordPrint(String kotId) async {
+    try {
+      await ApiClient.instance.post(ApiConstants.printKot(kotId));
+      _ref.invalidate(kitchenKotsProvider);
+    } catch (_) {
+      // Non-critical — the physical print already happened client-side;
+      // failing to record the counter shouldn't block the user.
+    }
   }
 }
 

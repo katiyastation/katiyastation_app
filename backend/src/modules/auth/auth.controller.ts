@@ -1,5 +1,6 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
-import { AuthService } from './auth.service';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req } from '@nestjs/common';
+import { Request } from 'express';
+import { AuthService, RequestMeta } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -9,6 +10,14 @@ import { Public } from '../../common/decorators/public.decorator';
 import { RawResponse } from '../../common/decorators/raw-response.decorator';
 import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 
+function requestMeta(req: Request): RequestMeta {
+  const userAgent = req.headers['user-agent'];
+  return {
+    ipAddress: req.ip,
+    device: Array.isArray(userAgent) ? userAgent[0] : userAgent,
+  };
+}
+
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -17,8 +26,8 @@ export class AuthController {
   @RawResponse()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  login(@Body() dto: LoginDto, @Req() req: Request) {
+    return this.authService.login(dto, requestMeta(req));
   }
 
   @Public()
@@ -31,8 +40,8 @@ export class AuthController {
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  async logout(@CurrentUser() user: CurrentUserPayload) {
-    await this.authService.logout(user.userId);
+  async logout(@CurrentUser() user: CurrentUserPayload, @Req() req: Request) {
+    await this.authService.logout(user.userId, requestMeta(req));
     return { loggedOut: true };
   }
 

@@ -67,6 +67,9 @@ class ApiConstants {
   static String updateKotStatus(String kotId) => '/kots/$kotId/status';
   static String kotItems(String kotId) => '/kots/$kotId/items';
   static String updateKotItemQuantity(String itemId) => '/kots/items/$itemId/quantity';
+  static String updateKotItemStatus(String kotId, String itemId) => '/kots/$kotId/items/$itemId/status';
+  static String printKot(String kotId) => '/kots/$kotId/print';
+  static String returnKotItem(String kotId, String itemId) => '/kots/$kotId/items/$itemId/return';
 
   // ── Menu Endpoints ─────────────────────────────────────────
   static const String menuCategories = '/menu/categories';

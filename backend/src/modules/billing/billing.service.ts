@@ -1,8 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RealtimeService } from '../websocket/realtime.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 import { GenerateBillDto } from './dto/generate-bill.dto';
 import { UpdateBillDto } from './dto/update-bill.dto';
+import { AddPaymentDto } from './dto/add-payment.dto';
 import { CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { resolveBranchScope } from '../../common/utils/branch-scope.util';
 import { buildPaginationMeta } from '../../common/dto/pagination.dto';
@@ -14,6 +16,7 @@ export class BillingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
+    private readonly auditLogs: AuditLogsService,
   ) {}
 
   async findAll(currentUser: CurrentUserPayload, filter: BranchFilterDto) {
@@ -76,6 +79,12 @@ export class BillingService {
     const totalAmount = afterService + vatAmount;
     const paymentMethod = dto.paymentMethod ?? 'cash';
     const amountPaid = dto.amountPaid ?? totalAmount;
+    // Was previously hardcoded 'paid' for any non-credit method, even if
+    // amountPaid was less than totalAmount — compute it properly so a
+    // cashier settling for less than the total (partial tender) is
+    // correctly tracked as partial_paid, not silently marked paid.
+    const paymentStatus =
+      paymentMethod === 'credit' ? 'credit' : amountPaid >= totalAmount ? 'paid' : 'partial_paid';
 
     const bill = await this.prisma.$transaction(async (tx) => {
       const created = await tx.bill.create({
@@ -93,13 +102,28 @@ export class BillingService {
           amountPaid,
           changeAmount: paymentMethod === 'cash' ? Math.max(0, amountPaid - totalAmount) : 0,
           paymentMethod,
-          paymentStatus: paymentMethod === 'credit' ? 'credit' : 'paid',
+          paymentStatus,
           cashierId: currentUser.userId,
           cashierName: cashier?.fullName,
           customerName: dto.customerName,
           customerPhone: dto.customerPhone,
         },
       });
+
+      // Payment is the single source of truth for "how much has been
+      // paid" — record the initial tender captured at settle time here so
+      // addPayment() (for partial/multi-tender top-ups) can just sum this
+      // table rather than reconciling against Bill.amountPaid separately.
+      if (amountPaid > 0 && paymentMethod !== 'credit') {
+        await tx.payment.create({
+          data: {
+            billId: created.id,
+            method: paymentMethod,
+            amount: amountPaid,
+            receivedById: currentUser.userId,
+          },
+        });
+      }
 
       if (paymentMethod === 'credit') {
         await tx.creditRecord.create({
@@ -131,7 +155,62 @@ export class BillingService {
 
     this.realtime.billGenerated(session.branchId, bill);
     this.realtime.tableStatusChanged(session.branchId, session.tableId, { status: 'available' });
+    this.auditLogs.record({
+      branchId: session.branchId,
+      userId: currentUser.userId,
+      action: 'payment',
+      tableName: 'bills',
+      rowId: bill.id,
+      newValues: { totalAmount, amountPaid, paymentMethod, paymentStatus },
+    });
     return bill;
+  }
+
+  /** Adds an extra tender to an existing bill — covering the rest of a
+   * partial payment, or splitting one bill across multiple methods. */
+  async addPayment(billId: string, currentUser: CurrentUserPayload, dto: AddPaymentDto) {
+    const bill = await this.findOne(billId);
+    if (bill.paymentStatus === 'paid') {
+      throw new BadRequestException('This bill is already fully paid');
+    }
+
+    await this.prisma.payment.create({
+      data: {
+        billId,
+        method: dto.method,
+        amount: dto.amount,
+        referenceNumber: dto.referenceNumber,
+        device: dto.device,
+        receivedById: currentUser.userId,
+      },
+    });
+
+    const payments = await this.prisma.payment.findMany({ where: { billId } });
+    const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
+    const paymentStatus = totalPaid >= Number(bill.totalAmount) ? 'paid' : 'partial_paid';
+
+    const updated = await this.prisma.bill.update({
+      where: { id: billId },
+      data: {
+        amountPaid: totalPaid,
+        paymentStatus,
+        changeAmount: Math.max(0, totalPaid - Number(bill.totalAmount)),
+      },
+    });
+
+    if (paymentStatus === 'paid') {
+      this.realtime.billPaid(bill.branchId, updated);
+    }
+    this.auditLogs.record({
+      branchId: bill.branchId,
+      userId: currentUser.userId,
+      action: 'payment_added',
+      tableName: 'bills',
+      rowId: billId,
+      newValues: { method: dto.method, amount: dto.amount, totalPaid, paymentStatus },
+    });
+
+    return updated;
   }
 
   async update(id: string, dto: UpdateBillDto) {

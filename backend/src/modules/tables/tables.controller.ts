@@ -61,8 +61,12 @@ export class TablesController {
 
   @Roles('super_admin', 'branch_manager', 'cashier', 'waiter')
   @Post(':id/transfer-session')
-  transferSession(@Param('id') id: string, @Body() dto: TransferSessionDto) {
-    return this.tablesService.transferSession(id, dto);
+  transferSession(
+    @Param('id') id: string,
+    @Body() dto: TransferSessionDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.tablesService.transferSession(id, dto, user);
   }
 
   @Roles('super_admin', 'branch_manager')

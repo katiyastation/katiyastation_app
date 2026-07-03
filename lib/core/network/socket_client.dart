@@ -42,6 +42,10 @@ class SocketEvents {
   // Shift events
   static const String shiftClosed = 'shift:closed';
   static const String shiftApproved = 'shift:approved';
+
+  // Waiter / table-move events
+  static const String tableTransferred = 'table:transferred';
+  static const String waiterAssigned = 'session:waiter_assigned';
 }
 
 /// Room name builders — must match the backend gateway
@@ -173,6 +177,15 @@ class SocketClient {
   Stream<Map<String, dynamic>> onLowStock() =>
       on(SocketEvents.inventoryLowStock).map((d) => d as Map<String, dynamic>);
 
+  Stream<Map<String, dynamic>> onOrderItemCancelled() =>
+      on(SocketEvents.orderItemCancelled).map((d) => d as Map<String, dynamic>);
+
+  Stream<Map<String, dynamic>> onTableTransferred() =>
+      on(SocketEvents.tableTransferred).map((d) => d as Map<String, dynamic>);
+
+  Stream<Map<String, dynamic>> onWaiterAssigned() =>
+      on(SocketEvents.waiterAssigned).map((d) => d as Map<String, dynamic>);
+
   // ── Emit (send event to server) ────────────────────────────
   void emit(String event, [dynamic data]) {
     _socket?.emit(event, data);
@@ -222,5 +235,7 @@ class SocketClient {
     SocketEvents.notificationNew,
     SocketEvents.shiftClosed,
     SocketEvents.shiftApproved,
+    SocketEvents.tableTransferred,
+    SocketEvents.waiterAssigned,
   ];
 }

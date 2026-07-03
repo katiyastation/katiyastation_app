@@ -29,6 +29,8 @@ export const SocketEvents = {
   notificationNew: 'notification:new',
   shiftClosed: 'shift:closed',
   shiftApproved: 'shift:approved',
+  tableTransferred: 'table:transferred',
+  waiterAssigned: 'session:waiter_assigned',
 } as const;
 
 export const SocketRooms = {

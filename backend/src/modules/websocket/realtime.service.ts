@@ -55,4 +55,17 @@ export class RealtimeService {
   shiftApproved(branchId: string, payload: unknown) {
     this.gateway.emitToRoom(SocketRooms.branch(branchId), SocketEvents.shiftApproved, payload);
   }
+
+  orderItemCancelled(branchId: string, payload: unknown) {
+    this.gateway.emitToRoom(SocketRooms.kitchen(branchId), SocketEvents.orderItemCancelled, payload);
+    this.gateway.emitToRoom(SocketRooms.branch(branchId), SocketEvents.orderItemCancelled, payload);
+  }
+
+  tableTransferred(branchId: string, payload: unknown) {
+    this.gateway.emitToRoom(SocketRooms.branch(branchId), SocketEvents.tableTransferred, payload);
+  }
+
+  waiterAssigned(branchId: string, payload: unknown) {
+    this.gateway.emitToRoom(SocketRooms.branch(branchId), SocketEvents.waiterAssigned, payload);
+  }
 }

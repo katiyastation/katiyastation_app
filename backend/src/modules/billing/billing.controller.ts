@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common
 import { BillingService } from './billing.service';
 import { GenerateBillDto } from './dto/generate-bill.dto';
 import { UpdateBillDto } from './dto/update-bill.dto';
+import { AddPaymentDto } from './dto/add-payment.dto';
 import { BranchFilterDto } from '../../common/dto/branch-filter.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { BlockSuperAdmin } from '../../common/decorators/block-super-admin.decorator';
@@ -35,6 +36,15 @@ export class BillingController {
   @Patch('bills/:id')
   update(@Param('id') id: string, @Body() dto: UpdateBillDto) {
     return this.billingService.update(id, dto);
+  }
+
+  @Post('bills/:id/payments')
+  addPayment(
+    @Param('id') id: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() dto: AddPaymentDto,
+  ) {
+    return this.billingService.addPayment(id, user, dto);
   }
 
   @Get('payment-history')

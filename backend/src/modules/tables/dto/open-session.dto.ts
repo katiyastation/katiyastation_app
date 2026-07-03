@@ -9,4 +9,10 @@ export class OpenSessionDto {
   @IsOptional()
   @IsUUID()
   customerId?: string;
+
+  /** Explicit waiter override — if omitted, the server assigns one
+   * automatically (see TablesService.openSession). */
+  @IsOptional()
+  @IsUUID()
+  waiterId?: string;
 }

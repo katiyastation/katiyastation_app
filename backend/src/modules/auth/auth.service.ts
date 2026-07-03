@@ -12,6 +12,12 @@ import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { AccessTokenPayload, RefreshTokenPayload } from './interfaces/jwt-payload.interface';
 import { toSnakeCase } from '../../common/utils/case.util';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
+
+export interface RequestMeta {
+  ipAddress?: string;
+  device?: string;
+}
 
 @Injectable()
 export class AuthService {
@@ -19,22 +25,49 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly auditLogs: AuditLogsService,
   ) {}
 
-  async login(dto: LoginDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email.trim().toLowerCase() },
-    });
+  async login(dto: LoginDto, meta: RequestMeta = {}) {
+    const email = dto.email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email } });
 
     if (!user || !(await argon2.verify(user.passwordHash, dto.password))) {
+      await this.auditLogs.record({
+        userId: user?.id,
+        branchId: user?.branchId ?? undefined,
+        action: 'login_failed',
+        tableName: 'users',
+        rowId: user?.id,
+        newValues: { email },
+        ...meta,
+      });
       throw new UnauthorizedException('Invalid email or password');
     }
 
     if (!user.isActive) {
+      await this.auditLogs.record({
+        userId: user.id,
+        branchId: user.branchId ?? undefined,
+        action: 'login_failed',
+        tableName: 'users',
+        rowId: user.id,
+        newValues: { reason: 'deactivated' },
+        ...meta,
+      });
       throw new ForbiddenException('Your account has been deactivated. Contact your administrator.');
     }
 
     const tokens = await this.issueTokens(user.id, user.email, user.role, user.branchId);
+
+    await this.auditLogs.record({
+      userId: user.id,
+      branchId: user.branchId ?? undefined,
+      action: 'login',
+      tableName: 'users',
+      rowId: user.id,
+      ...meta,
+    });
 
     // accessToken/refreshToken stay camelCase; `user` is snake_cased to
     // match UserProfile.fromJson. See @RawResponse() on AuthController.
@@ -83,10 +116,17 @@ export class AuthService {
   }
 
   /** Logs the user out of all sessions (all outstanding refresh tokens revoked). */
-  async logout(userId: string) {
+  async logout(userId: string, meta: RequestMeta = {}) {
     await this.prisma.refreshToken.updateMany({
       where: { userId, revoked: false },
       data: { revoked: true },
+    });
+    await this.auditLogs.record({
+      userId,
+      action: 'logout',
+      tableName: 'users',
+      rowId: userId,
+      ...meta,
     });
   }
 

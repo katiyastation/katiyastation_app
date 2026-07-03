@@ -6,6 +6,8 @@ export const PAYMENT_METHOD_VALUES = [
   'esewa',
   'khalti',
   'fonepay',
+  'qr',
+  'upi',
   'bank_transfer',
   'credit',
 ] as const;

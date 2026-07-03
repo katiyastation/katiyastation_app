@@ -14,6 +14,8 @@ class Kot extends Equatable {
   final DateTime createdAt;
   final DateTime? servedAt;
   final String? notes;
+  final int printCount;
+  final DateTime? lastPrintedAt;
 
   const Kot({
     required this.id,
@@ -29,6 +31,8 @@ class Kot extends Equatable {
     required this.createdAt,
     this.servedAt,
     this.notes,
+    this.printCount = 0,
+    this.lastPrintedAt,
   });
 
   factory Kot.fromJson(Map<String, dynamic> json) {
@@ -47,6 +51,8 @@ class Kot extends Equatable {
       createdAt: DateTime.parse(json['created_at'] as String),
       servedAt: json['served_at'] != null ? DateTime.parse(json['served_at'] as String) : null,
       notes: json['notes'] as String?,
+      printCount: json['print_count'] as int? ?? 0,
+      lastPrintedAt: json['last_printed_at'] != null ? DateTime.parse(json['last_printed_at'] as String) : null,
     );
   }
 
@@ -70,6 +76,7 @@ class KotItem extends Equatable {
   final int quantity;
   final double unitPrice;
   final String? notes;
+  final String status; // pending | preparing | ready | served | cancelled | returned
 
   const KotItem({
     required this.id,
@@ -79,6 +86,7 @@ class KotItem extends Equatable {
     required this.quantity,
     this.unitPrice = 0.0,
     this.notes,
+    this.status = 'pending',
   });
 
   factory KotItem.fromJson(Map<String, dynamic> json) {
@@ -90,11 +98,17 @@ class KotItem extends Equatable {
       quantity: json['quantity'] as int,
       unitPrice: (json['unit_price'] as num?)?.toDouble() ?? 0.0,
       notes: json['note'] as String? ?? json['notes'] as String?,
+      status: json['status'] as String? ?? 'pending',
     );
   }
 
+  bool get isPending => status == 'pending';
+  bool get isServed => status == 'served';
+  bool get isCancelled => status == 'cancelled';
+  bool get isReturned => status == 'returned';
+
   @override
-  List<Object?> get props => [id, kotId, menuItemId, quantity, unitPrice];
+  List<Object?> get props => [id, kotId, menuItemId, quantity, unitPrice, status];
 }
 
 class KotWithItems extends Equatable {

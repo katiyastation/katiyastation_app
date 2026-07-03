@@ -36,7 +36,9 @@ model User {
   passwordResetTokens   PasswordResetToken[]
   waiterSessions        TableSession[]        @relation("SessionWaiter")
   waiterKots            Kot[]                 @relation("KotWaiter")
+  preparedKots          Kot[]                 @relation("KotPreparedBy")
   cashierBills          Bill[]                @relation("BillCashier")
+  receivedPayments      Payment[]             @relation("PaymentReceivedBy")
   createdLoyaltyTxns    LoyaltyTransaction[]  @relation("LoyaltyCreatedBy")
   auditLogs             AuditLog[]
   cashierShiftClosings  ShiftClosing[]        @relation("ShiftCashier")
@@ -189,23 +191,28 @@ model TableSession {
 // ── 5. KOTs ──────────────────────────────────────────────────
 
 model Kot {
-  id          String   @id @default(uuid())
-  sessionId   String   @map("session_id")
-  branchId    String   @map("branch_id")
-  tableId     String?  @map("table_id")
-  kotNumber   String   @map("kot_number")
-  status      String   @default("pending") // pending | preparing | ready | served | cancelled
-  waiterId    String?  @map("waiter_id")
-  itemsCount  Int      @default(0) @map("items_count")
-  notes       String?
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id            String    @id @default(uuid())
+  sessionId     String    @map("session_id")
+  branchId      String    @map("branch_id")
+  tableId       String?   @map("table_id")
+  kotNumber     String    @map("kot_number")
+  status        String    @default("pending") // pending | preparing | ready | served | cancelled
+  waiterId      String?   @map("waiter_id")
+  itemsCount    Int       @default(0) @map("items_count")
+  notes         String?
+  printCount    Int       @default(0) @map("print_count")
+  lastPrintedAt DateTime? @map("last_printed_at")
+  preparedById  String?   @map("prepared_by_id")
+  readyAt       DateTime? @map("ready_at") // set once, first time status becomes 'ready' — used for kitchen performance reports
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
-  session TableSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  branch  Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  table   RestaurantTable? @relation(fields: [tableId], references: [id], onDelete: SetNull)
-  waiter  User?            @relation("KotWaiter", fields: [waiterId], references: [id], onDelete: SetNull)
-  items   KotItem[]
+  session    TableSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  branch     Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  table      RestaurantTable? @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  waiter     User?            @relation("KotWaiter", fields: [waiterId], references: [id], onDelete: SetNull)
+  preparedBy User?            @relation("KotPreparedBy", fields: [preparedById], references: [id], onDelete: SetNull)
+  items      KotItem[]
 
   @@map("kots")
 }
@@ -302,8 +309,27 @@ model Bill {
   table   RestaurantTable? @relation(fields: [tableId], references: [id], onDelete: SetNull)
   cashier User?           @relation("BillCashier", fields: [cashierId], references: [id], onDelete: SetNull)
   creditRecords CreditRecord[]
+  payments      Payment[]
 
   @@map("bills")
+}
+
+// ── 9b. Payments (multi-tender / partial payment ledger) ─────
+
+model Payment {
+  id              String   @id @default(uuid())
+  billId          String   @map("bill_id")
+  method          String
+  amount          Decimal
+  referenceNumber String?  @map("reference_number")
+  receivedById    String?  @map("received_by_id")
+  device          String?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  bill       Bill  @relation(fields: [billId], references: [id], onDelete: Cascade)
+  receivedBy User? @relation("PaymentReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
+
+  @@map("payments")
 }
 
 // ── 10. Credit Records (Udhaaro) ────────────────────────────
@@ -584,6 +610,8 @@ model AuditLog {
   rowId      String?  @map("row_id")
   oldValues  Json?    @map("old_values")
   newValues  Json?    @map("new_values")
+  ipAddress  String?  @map("ip_address")
+  device     String?
   createdAt  DateTime @default(now()) @map("created_at")
 
   branch Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
