@@ -1278,13 +1278,13 @@ class _FloorView extends StatelessWidget {
             child: Row(
               children: [
                 _StatusBadge('Available', available, AppColors.tableAvailable),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 _StatusBadge('Occupied', occupied, AppColors.tableOccupied),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 _StatusBadge('Reserved', reserved, AppColors.tableReserved),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 _StatusBadge('Billing', billing, AppColors.warning),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 _StatusBadge('Disabled', disabled, AppColors.textHint),
               ],
             ),
@@ -1330,28 +1330,6 @@ class _FloorView extends StatelessWidget {
               },
             ),
           ),
-        const Divider(height: 1, color: AppColors.divider),
-        // ── Color Legend ───────────────────────────────────────────────
-        Container(
-          color: AppColors.surface,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: const SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _LegendDot('Available', AppColors.tableAvailable),
-                SizedBox(width: 12),
-                _LegendDot('Occupied', AppColors.tableOccupied),
-                SizedBox(width: 12),
-                _LegendDot('Reserved', AppColors.tableReserved),
-                SizedBox(width: 12),
-                _LegendDot('Billing', AppColors.warning),
-                SizedBox(width: 12),
-                _LegendDot('Disabled', AppColors.textHint),
-              ],
-            ),
-          ),
-        ),
         const Divider(height: 1, color: AppColors.divider),
         // ── Tables Grid ────────────────────────────────────────────────
         Expanded(
@@ -2061,25 +2039,17 @@ class _TableCard extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ── Header ─────────────────────────────────────────────
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Icon(iconData,
-                      color: isDisabled
-                          ? AppColors.textHint
-                          : color,
-                      size: 26),
-                  Container(
-                    width: 9,
-                    height: 9,
-                    decoration: BoxDecoration(
-                      color: isDisabled
-                          ? AppColors.textHint
-                          : color,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ],
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: (isDisabled ? AppColors.textHint : color)
+                      .withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                alignment: Alignment.center,
+                child: Icon(iconData,
+                    color: isDisabled ? AppColors.textHint : color, size: 18),
               ),
               const Spacer(),
               // ── Table Number ───────────────────────────────────────
@@ -2350,47 +2320,26 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border(left: BorderSide(color: color, width: 2.5)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-              width: 7,
-              height: 7,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-          const SizedBox(width: 5),
-          Text('$count $label',
+          Text('$count',
               style: GoogleFonts.outfit(
-                  fontSize: 11, color: color, fontWeight: FontWeight.w500)),
+                  fontSize: 13, color: color, fontWeight: FontWeight.w800)),
+          const SizedBox(width: 5),
+          Text(label,
+              style: GoogleFonts.outfit(
+                  fontSize: 11.5,
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w600)),
         ],
       ),
-    );
-  }
-}
-
-class _LegendDot extends StatelessWidget {
-  final String label;
-  final Color color;
-  const _LegendDot(this.label, this.color);
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-        const SizedBox(width: 4),
-        Text(label,
-            style: GoogleFonts.outfit(fontSize: 10, color: AppColors.textHint)),
-      ],
     );
   }
 }

@@ -23,7 +23,7 @@ class AppColors {
 
   // Status Colors
   static const Color success = Color(0xFF27AE60);        // Emerald green
-  static const Color error = Color(0xFFE74C3C);          // Vivid red (same as error)
+  static const Color error = Color(0xFFDC3545);          // Alert red, distinct from brand red
   static const Color warning = Color(0xFFF39C12);        // Amber
   static const Color info = Color(0xFF2980B9);           // Blue
 

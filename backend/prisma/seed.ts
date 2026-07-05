@@ -13,10 +13,10 @@ const prisma = new PrismaClient();
 
 async function main() {
   const branch = await prisma.branch.upsert({
-    where: { id: '00000000-0000-0000-0000-000000000001' },
+    where: { id: 'a0000000-0000-4000-8000-000000000001' },
     update: {},
     create: {
-      id: '00000000-0000-0000-0000-000000000001',
+      id: 'a0000000-0000-4000-8000-000000000001',
       name: 'Katiya Station — Main Branch',
       city: 'Kathmandu',
       vatRate: 13.0,
