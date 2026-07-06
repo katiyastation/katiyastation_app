@@ -90,7 +90,7 @@ const List<NavItem> allNavItems = [
   NavItem(label: 'Attendance', icon: Icons.fingerprint, activeIcon: Icons.fingerprint, path: '/attendance',
       allowedRoles: ['cashier', 'waiter', 'kitchen', 'inventory']),
   NavItem(label: 'Reports', icon: Icons.bar_chart, activeIcon: Icons.bar_chart, path: '/reports',
-      allowedRoles: ['branch_manager', 'accountant']),
+      allowedRoles: ['branch_manager', 'accountant', 'cashier']),
   NavItem(label: 'Settings', icon: Icons.settings, activeIcon: Icons.settings_outlined, path: '/settings',
       allowedRoles: ['super_admin', 'branch_manager']),
   NavItem(label: 'Loyalty', icon: Icons.star, activeIcon: Icons.star, path: '/loyalty',

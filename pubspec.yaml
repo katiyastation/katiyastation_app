@@ -66,6 +66,9 @@ dependencies:
 
   # JSON Serialization
   json_annotation: ^4.9.0
+  pdf: ^3.12.0
+  printing: ^5.14.3
+  file_saver: ^0.4.0
 
 dev_dependencies:
   flutter_test:

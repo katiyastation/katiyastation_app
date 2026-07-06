@@ -163,6 +163,7 @@ class ApiConstants {
 
   // ── Reports Endpoints ──────────────────────────────────────
   static const String reports = '/reports';
+  static const String reportSummary = '/reports/summary';
   static const String salesReport = '/reports/sales';
   static const String inventoryReport = '/reports/inventory';
   static const String staffReport = '/reports/staff';

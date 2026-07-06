@@ -31,6 +31,8 @@ export const SocketEvents = {
   shiftApproved: 'shift:approved',
   tableTransferred: 'table:transferred',
   waiterAssigned: 'session:waiter_assigned',
+  userChanged: 'user:changed',
+  purchaseCreated: 'purchase:created',
 } as const;
 
 export const SocketRooms = {

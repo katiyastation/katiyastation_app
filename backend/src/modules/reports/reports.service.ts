@@ -49,6 +49,68 @@ export class ReportsService {
     };
   }
 
+  /**
+   * One-shot report summary for the Reports screen export (Daily / Weekly /
+   * Monthly / Yearly). Aggregated server-side so totals are accurate for any
+   * range regardless of row count. Role-aware: a cashier gets sales/collection
+   * figures only; managers & accountants also get expenses, purchases and the
+   * resulting net profit.
+   */
+  async summary(currentUser: CurrentUserPayload, filter: ReportFilterDto) {
+    const branchId = resolveBranchScope(currentUser, filter.branchId);
+    const where = { ...(branchId ? { branchId } : {}), ...dateRange(filter) };
+
+    const [byStatus, byMethod, totals] = await Promise.all([
+      this.prisma.bill.groupBy({ by: ['paymentStatus'], where, _sum: { totalAmount: true }, _count: true }),
+      this.prisma.bill.groupBy({ by: ['paymentMethod'], where, _sum: { totalAmount: true }, _count: true }),
+      this.prisma.bill.aggregate({
+        where,
+        _sum: { subTotal: true, discount: true, serviceCharge: true, vatAmount: true, totalAmount: true },
+        _count: true,
+      }),
+    ]);
+
+    const sumFor = (status: string) =>
+      Number(byStatus.find((r) => r.paymentStatus === status)?._sum.totalAmount ?? 0);
+
+    const sales = sumFor('paid');
+    const credit = sumFor('credit');
+    const grossSales = Number(totals._sum.totalAmount ?? 0);
+
+    const includesFinancials = currentUser.role !== 'cashier';
+    let expenses = 0;
+    let purchases = 0;
+    if (includesFinancials) {
+      const [expAgg, purAgg] = await Promise.all([
+        this.prisma.expense.aggregate({ where, _sum: { amount: true } }),
+        this.prisma.purchase.aggregate({ where, _sum: { totalAmount: true } }),
+      ]);
+      expenses = Number(expAgg._sum.amount ?? 0);
+      purchases = Number(purAgg._sum.totalAmount ?? 0);
+    }
+
+    return {
+      billCount: totals._count,
+      grossSales,
+      sales,
+      credit,
+      discount: Number(totals._sum.discount ?? 0),
+      serviceCharge: Number(totals._sum.serviceCharge ?? 0),
+      vatAmount: Number(totals._sum.vatAmount ?? 0),
+      byPaymentMethod: byMethod
+        .map((row) => ({
+          paymentMethod: row.paymentMethod,
+          count: row._count,
+          totalAmount: Number(row._sum.totalAmount ?? 0),
+        }))
+        .sort((a, b) => b.totalAmount - a.totalAmount),
+      includesFinancials,
+      expenses,
+      purchases,
+      netProfit: sales - expenses - purchases,
+    };
+  }
+
   async sales(currentUser: CurrentUserPayload, filter: ReportFilterDto) {
     const branchId = resolveBranchScope(currentUser, filter.branchId);
     const where = { ...(branchId ? { branchId } : {}), ...dateRange(filter) };

@@ -11,6 +11,15 @@ import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
+  // Cashiers may pull their own sales/collection summary for export; the
+  // service withholds expense/purchase/profit figures from them. This
+  // method-level @Roles overrides the manager/accountant class default.
+  @Roles('branch_manager', 'accountant', 'cashier')
+  @Get('summary')
+  summary(@CurrentUser() user: CurrentUserPayload, @Query() filter: ReportFilterDto) {
+    return this.reportsService.summary(user, filter);
+  }
+
   @Get('dashboard')
   dashboard(@CurrentUser() user: CurrentUserPayload, @Query() filter: ReportFilterDto) {
     return this.reportsService.dashboard(user, filter);

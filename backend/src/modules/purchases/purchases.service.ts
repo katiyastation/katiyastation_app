@@ -6,10 +6,14 @@ import { CurrentUserPayload } from '../../common/decorators/current-user.decorat
 import { resolveBranchScope } from '../../common/utils/branch-scope.util';
 import { buildPaginationMeta } from '../../common/dto/pagination.dto';
 import { BranchFilterDto } from '../../common/dto/branch-filter.dto';
+import { RealtimeService } from '../websocket/realtime.service';
 
 @Injectable()
 export class PurchasesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   async findAll(currentUser: CurrentUserPayload, filter: BranchFilterDto) {
     const branchId = resolveBranchScope(currentUser, filter.branchId);
@@ -49,8 +53,8 @@ export class PurchasesService {
       ? items.reduce((sum, item) => sum + item.quantity * item.unitCost, 0)
       : (dto.totalAmount ?? 0);
 
-    return this.prisma.$transaction(async (tx) => {
-      const purchase = await tx.purchase.create({
+    const purchase = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.purchase.create({
         data: {
           branchId: dto.branchId,
           supplierId: dto.supplierId,
@@ -65,7 +69,7 @@ export class PurchasesService {
             })),
           },
         },
-        include: { items: true },
+        include: { items: true, supplier: true },
       });
 
       // Itemized purchases restock inventory; quick-logged totals (no
@@ -81,13 +85,20 @@ export class PurchasesService {
             itemId: item.inventoryItemId,
             type: 'in',
             quantity: item.quantity,
-            reason: `Purchase ${purchase.id}`,
+            reason: `Purchase ${created.id}`,
           },
         });
       }
 
-      return purchase;
+      return created;
     });
+
+    // Push the new record to every device on this branch so open purchase
+    // lists and the daily report update live (createdAt carries the exact
+    // date & time the purchase was saved).
+    this.realtime.purchaseCreated(dto.branchId, purchase);
+
+    return purchase;
   }
 
   async update(id: string, dto: UpdatePurchaseDto) {

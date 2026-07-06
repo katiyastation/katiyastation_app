@@ -46,6 +46,12 @@ class SocketEvents {
   // Waiter / table-move events
   static const String tableTransferred = 'table:transferred';
   static const String waiterAssigned = 'session:waiter_assigned';
+
+  // Branch user account events (add / edit / block / delete)
+  static const String userChanged = 'user:changed';
+
+  // Purchase events (recorded spend → daily report)
+  static const String purchaseCreated = 'purchase:created';
 }
 
 /// Room name builders — must match the backend gateway
@@ -186,6 +192,12 @@ class SocketClient {
   Stream<Map<String, dynamic>> onWaiterAssigned() =>
       on(SocketEvents.waiterAssigned).map((d) => d as Map<String, dynamic>);
 
+  Stream<Map<String, dynamic>> onUserChanged() =>
+      on(SocketEvents.userChanged).map((d) => d as Map<String, dynamic>);
+
+  Stream<Map<String, dynamic>> onPurchaseCreated() =>
+      on(SocketEvents.purchaseCreated).map((d) => d as Map<String, dynamic>);
+
   // ── Emit (send event to server) ────────────────────────────
   void emit(String event, [dynamic data]) {
     _socket?.emit(event, data);
@@ -237,5 +249,7 @@ class SocketClient {
     SocketEvents.shiftApproved,
     SocketEvents.tableTransferred,
     SocketEvents.waiterAssigned,
+    SocketEvents.userChanged,
+    SocketEvents.purchaseCreated,
   ];
 }

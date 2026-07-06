@@ -68,4 +68,14 @@ export class RealtimeService {
   waiterAssigned(branchId: string, payload: unknown) {
     this.gateway.emitToRoom(SocketRooms.branch(branchId), SocketEvents.waiterAssigned, payload);
   }
+
+  /** A branch user account was created, updated, blocked, or deleted. */
+  userChanged(branchId: string, payload: unknown) {
+    this.gateway.emitToRoom(SocketRooms.branch(branchId), SocketEvents.userChanged, payload);
+  }
+
+  /** A purchase was recorded — refresh purchase lists and the daily report. */
+  purchaseCreated(branchId: string, payload: unknown) {
+    this.gateway.emitToRoom(SocketRooms.branch(branchId), SocketEvents.purchaseCreated, payload);
+  }
 }

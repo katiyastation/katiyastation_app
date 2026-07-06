@@ -9,6 +9,7 @@ import { buildPaginationMeta } from '../../common/dto/pagination.dto';
 import { CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { resolveBranchScope } from '../../common/utils/branch-scope.util';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { RealtimeService } from '../websocket/realtime.service';
 
 const SAFE_SELECT = {
   id: true,
@@ -34,7 +35,37 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditLogs: AuditLogsService,
+    private readonly realtime: RealtimeService,
   ) {}
+
+  /**
+   * A branch_manager may only create/edit/block/delete accounts that live in
+   * their own branch, and may never touch a super_admin (whose branchId is
+   * null and therefore never matches). super_admin may manage anyone.
+   */
+  private assertCanManage(currentUser: CurrentUserPayload, targetBranchId: string | null) {
+    if (currentUser.role === 'super_admin') return;
+    if (!currentUser.branchId) {
+      throw new ForbiddenException('Your account is not assigned to a branch');
+    }
+    if (targetBranchId !== currentUser.branchId) {
+      throw new ForbiddenException('You can only manage users in your own branch');
+    }
+  }
+
+  /** Only a super_admin may create or promote another super_admin. */
+  private assertCanAssignRole(currentUser: CurrentUserPayload, role?: string) {
+    if (role === 'super_admin' && currentUser.role !== 'super_admin') {
+      throw new ForbiddenException('Only a super admin can grant the super admin role');
+    }
+  }
+
+  /** Push a fresh copy of the user to everyone watching that branch's room. */
+  private emitUserChanged(user: { branchId: string | null } & Record<string, any>) {
+    if (user.branchId) {
+      this.realtime.userChanged(user.branchId, toResponse(user));
+    }
+  }
 
   async findAll(currentUser: CurrentUserPayload, filter: BranchFilterDto) {
     const branchId = resolveBranchScope(currentUser, filter.branchId);
@@ -71,6 +102,14 @@ export class UsersService {
   }
 
   async create(currentUser: CurrentUserPayload, dto: CreateUserDto) {
+    // A manager can only ever create inside their own branch; resolveBranchScope
+    // both pins the branch and rejects an attempt to target another one.
+    const branchId = resolveBranchScope(currentUser, dto.branchId);
+    if (currentUser.role !== 'super_admin' && !branchId) {
+      throw new ForbiddenException('Your account is not assigned to a branch');
+    }
+    this.assertCanAssignRole(currentUser, dto.role);
+
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email.trim().toLowerCase() } });
     if (existing) throw new ConflictException('A user with this email already exists');
 
@@ -81,7 +120,7 @@ export class UsersService {
         passwordHash,
         fullName: dto.fullName,
         role: dto.role,
-        branchId: dto.branchId,
+        branchId: branchId ?? null,
         phone: dto.phone,
         avatarUrl: dto.avatarUrl,
         isActive: dto.isActive ?? true,
@@ -90,7 +129,7 @@ export class UsersService {
     });
 
     await this.auditLogs.record({
-      branchId: dto.branchId,
+      branchId: user.branchId ?? undefined,
       userId: currentUser.userId,
       action: 'created',
       tableName: 'users',
@@ -98,12 +137,22 @@ export class UsersService {
       newValues: { fullName: user.fullName, role: user.role },
     });
 
+    this.emitUserChanged(user);
     return toResponse(user);
   }
 
   async update(id: string, currentUser: CurrentUserPayload, dto: UpdateUserDto) {
     const before = await this.findOne(id);
-    const updated = await this.prisma.user.update({ where: { id }, data: dto, select: SAFE_SELECT });
+    this.assertCanManage(currentUser, before.branchId);
+    this.assertCanAssignRole(currentUser, dto.role);
+
+    // Never let a manager move a user into (or out of) another branch.
+    const data: UpdateUserDto = { ...dto };
+    if (data.branchId !== undefined) {
+      data.branchId = resolveBranchScope(currentUser, data.branchId) ?? undefined;
+    }
+
+    const updated = await this.prisma.user.update({ where: { id }, data, select: SAFE_SELECT });
 
     if (dto.role && dto.role !== before.role) {
       await this.auditLogs.record({
@@ -117,16 +166,30 @@ export class UsersService {
       });
     }
 
+    this.emitUserChanged(updated);
     return toResponse(updated);
   }
 
   async toggleActive(id: string, currentUser: CurrentUserPayload) {
     const user = await this.findOne(id);
+    this.assertCanManage(currentUser, user.branchId);
+    if (id === currentUser.userId) {
+      throw new ForbiddenException('You cannot block your own account');
+    }
+
     const updated = await this.prisma.user.update({
       where: { id },
       data: { isActive: !user.isActive },
       select: SAFE_SELECT,
     });
+
+    if (!updated.isActive) {
+      // A blocked user must not keep an active session anywhere.
+      await this.prisma.refreshToken.updateMany({
+        where: { userId: id, revoked: false },
+        data: { revoked: true },
+      });
+    }
 
     await this.auditLogs.record({
       branchId: updated.branchId ?? undefined,
@@ -136,7 +199,39 @@ export class UsersService {
       rowId: id,
     });
 
+    this.emitUserChanged(updated);
     return toResponse(updated);
+  }
+
+  /**
+   * Permanently deletes a user account. Operational history (bills, KOTs,
+   * sessions, payments, audit logs) is preserved — those foreign keys are
+   * ON DELETE SET NULL — while login/device/reset tokens cascade away. A
+   * manager may only delete users in their own branch and never themselves.
+   */
+  async remove(id: string, currentUser: CurrentUserPayload) {
+    const target = await this.findOne(id);
+    this.assertCanManage(currentUser, target.branchId);
+    if (id === currentUser.userId) {
+      throw new ForbiddenException('You cannot delete your own account');
+    }
+
+    await this.prisma.user.delete({ where: { id } });
+
+    await this.auditLogs.record({
+      branchId: target.branchId ?? undefined,
+      userId: currentUser.userId,
+      action: 'deleted',
+      tableName: 'users',
+      rowId: id,
+      oldValues: { fullName: target.fullName, email: target.email, role: target.role },
+    });
+
+    // Signal removal so watching clients drop the row from their list.
+    if (target.branchId) {
+      this.realtime.userChanged(target.branchId, { id, deleted: true });
+    }
+    return { success: true };
   }
 
   /**
@@ -147,10 +242,7 @@ export class UsersService {
    */
   async resetPassword(id: string, currentUser: CurrentUserPayload, dto: ResetPasswordDto) {
     const target = await this.findOne(id);
-
-    if (currentUser.role !== 'super_admin' && target.branchId !== currentUser.branchId) {
-      throw new ForbiddenException('You can only reset passwords for users in your own branch');
-    }
+    this.assertCanManage(currentUser, target.branchId);
 
     const passwordHash = await argon2.hash(dto.newPassword);
     await this.prisma.user.update({ where: { id }, data: { passwordHash } });

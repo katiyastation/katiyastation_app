@@ -21,6 +21,8 @@ import '../../features/credit/presentation/screens/credit_screen.dart';
 import '../../features/notifications/presentation/screens/notifications_screen.dart';
 import '../../features/inventory/presentation/screens/inventory_screen.dart';
 import '../../features/cashier/presentation/screens/cashier_screen.dart';
+import '../../features/users/presentation/screens/users_screen.dart';
+import '../../features/purchase/presentation/screens/purchase_screen.dart';
 
 /// Watched once from [AppShell] so it stays alive for the whole
 /// authenticated session. Do not watch this from individual screens —
@@ -72,6 +74,10 @@ final realtimeSyncProvider = Provider<void>((ref) {
       ref.invalidate(inventoryProvider);
       ref.invalidate(notificationsProvider);
     }),
+    // Branch user account added / edited / blocked / deleted elsewhere.
+    socket.onUserChanged().listen((_) => ref.invalidate(branchUsersProvider)),
+    // Purchase recorded — refresh the purchase list and the daily report.
+    socket.onPurchaseCreated().listen((_) => ref.invalidate(purchasesProvider)),
   ]);
 
   ref.onDispose(() {
