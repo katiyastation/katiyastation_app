@@ -47,6 +47,36 @@ export class NotificationsService {
     return notification;
   }
 
+  /**
+   * Persists a low/out-of-stock alert and pushes it live (realtime + FCM).
+   * De-duped by title: while an alert of the same severity for the same item
+   * is still unread, repeated triggers (every order that consumes it) won't
+   * spam a fresh one — acknowledging it (mark-read) re-arms the alert.
+   */
+  async lowStock(item: {
+    branchId: string;
+    name: string;
+    unit?: string | null;
+    currentStock: unknown;
+    reorderLevel: unknown;
+  }) {
+    const qty = Number(item.currentStock);
+    const isOut = qty <= 0;
+    const title = isOut ? `Out of stock: ${item.name}` : `Low stock: ${item.name}`;
+
+    const existing = await this.prisma.notification.findFirst({
+      where: { branchId: item.branchId, title, isRead: false },
+    });
+    if (existing) return existing;
+
+    const unit = item.unit ? ` ${item.unit}` : '';
+    const body = isOut
+      ? `${item.name} is OUT of stock — reorder now.`
+      : `${item.name} is running low: ${qty}${unit} left (reorder level ${Number(item.reorderLevel)}).`;
+
+    return this.create({ branchId: item.branchId, title, body });
+  }
+
   async markRead(id: string) {
     const notification = await this.prisma.notification.findUnique({ where: { id } });
     if (!notification) throw new NotFoundException('Notification not found');

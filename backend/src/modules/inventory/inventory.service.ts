@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RealtimeService } from '../websocket/realtime.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateInventoryItemDto } from './dto/create-inventory-item.dto';
 import { UpdateInventoryItemDto } from './dto/update-inventory-item.dto';
 import { AdjustStockDto } from './dto/adjust-stock.dto';
@@ -14,6 +15,7 @@ export class InventoryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async findAll(currentUser: CurrentUserPayload, filter: BranchFilterDto) {
@@ -90,6 +92,7 @@ export class InventoryService {
 
     if (Number(updated.currentStock) <= Number(updated.reorderLevel)) {
       this.realtime.lowStock(item.branchId, updated);
+      await this.notifications.lowStock(updated);
     }
 
     return updated;

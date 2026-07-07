@@ -7,6 +7,7 @@ import '../constants/app_colors.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../router/app_router.dart';
 import '../network/realtime_sync.dart';
+import '../printing/kot_auto_print.dart';
 
 class AppShell extends ConsumerWidget {
   final Widget child;
@@ -20,6 +21,9 @@ class AppShell extends ConsumerWidget {
     // whole authenticated session so every screen under this shell gets
     // live updates without a manual refresh.
     ref.watch(realtimeSyncProvider);
+    // Print-station devices (kitchen tablet/PC with a thermal printer) auto-
+    // print each incoming KOT the moment a waiter sends it. No-op on web.
+    ref.watch(kotAutoPrintProvider);
     final profileAsync = ref.watch(authNotifierProvider);
     final profile = profileAsync.value;
     final navItems = getNavItemsForRole(profile?.role);

@@ -9,9 +9,12 @@
 
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'socket_client.dart';
+import '../app_messenger.dart';
+import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../features/tables/presentation/providers/tables_provider.dart';
 import '../../features/orders/presentation/providers/order_provider.dart';
 import '../../features/kitchen/presentation/providers/kitchen_provider.dart';
@@ -70,9 +73,10 @@ final realtimeSyncProvider = Provider<void>((ref) {
     socket.onBillGenerated().listen((_) => invalidateBilling()),
     socket.on(SocketEvents.billPaid).listen((_) => invalidateBilling()),
     socket.onNotification().listen((_) => ref.invalidate(notificationsProvider)),
-    socket.onLowStock().listen((_) {
+    socket.onLowStock().listen((data) {
       ref.invalidate(inventoryProvider);
       ref.invalidate(notificationsProvider);
+      _showLowStockToast(ref, data);
     }),
     // Branch user account added / edited / blocked / deleted elsewhere.
     socket.onUserChanged().listen((_) => ref.invalidate(branchUsersProvider)),
@@ -86,3 +90,33 @@ final realtimeSyncProvider = Provider<void>((ref) {
     }
   });
 });
+
+/// Pops a floating alert for the roles that act on stock (manager, cashier,
+/// inventory, accountant) whenever an item drops to/below its reorder level —
+/// shown app-wide via the global messenger, regardless of the current screen.
+void _showLowStockToast(Ref ref, Map<String, dynamic> data) {
+  const audience = {'branch_manager', 'cashier', 'inventory', 'accountant'};
+  final role = ref.read(authNotifierProvider).value?.role;
+  if (role == null || !audience.contains(role)) return;
+
+  final name = (data['name'] ?? data['item_name'] ?? 'An item').toString();
+  final rawQty = data['currentStock'] ?? data['current_stock'];
+  final qty = rawQty is num ? rawQty : num.tryParse('$rawQty');
+  final isOut = qty != null && qty <= 0;
+  final message = isOut
+      ? 'Out of stock: $name'
+      : 'Low stock: $name${qty != null ? ' (${qty % 1 == 0 ? qty.toInt() : qty} left)' : ''}';
+
+  scaffoldMessengerKey.currentState
+    ?..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(
+      backgroundColor: isOut ? const Color(0xFFD32F2F) : const Color(0xFFF57C00),
+      behavior: SnackBarBehavior.floating,
+      duration: const Duration(seconds: 4),
+      content: Row(children: [
+        Icon(isOut ? Icons.error_rounded : Icons.warning_amber_rounded, color: Colors.white, size: 18),
+        const SizedBox(width: 10),
+        Expanded(child: Text(message, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
+      ]),
+    ));
+}

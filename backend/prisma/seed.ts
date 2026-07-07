@@ -99,13 +99,11 @@ async function main() {
       create: { branchId: branch.id, tableNumber, capacity: 4 },
     });
   }
-
   // eslint-disable-next-line no-console
   console.log('Seed complete.');
   // eslint-disable-next-line no-console
   console.log(`Super admin login: ${superAdminEmail} / ${superAdminPassword}`);
 }
-
 main()
   .catch((error) => {
     // eslint-disable-next-line no-console

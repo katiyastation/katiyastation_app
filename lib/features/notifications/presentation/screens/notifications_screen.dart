@@ -21,6 +21,13 @@ final notificationsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) a
   return rows;
 });
 
+/// Unread notification count, kept live off [notificationsProvider] (which the
+/// realtime sync invalidates on every `notification:new` / low-stock event).
+final unreadNotificationCountProvider = Provider<int>((ref) {
+  final rows = ref.watch(notificationsProvider).valueOrNull ?? const [];
+  return rows.where((n) => n['is_read'] != true).length;
+});
+
 class NotificationsScreen extends ConsumerWidget {
   const NotificationsScreen({super.key});
 

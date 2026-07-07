@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { PrismaService } from '../../prisma/prisma.service';
 import { RealtimeService } from '../websocket/realtime.service';
 import { AuditLogsService } from '../audit-logs/audit-logs.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreateKotDto } from './dto/create-kot.dto';
 import { UpdateStatusDto } from './dto/update-status.dto';
 import { UpdateItemQuantityDto } from './dto/update-item-quantity.dto';
@@ -31,6 +32,7 @@ export class KotsService {
     private readonly prisma: PrismaService,
     private readonly realtime: RealtimeService,
     private readonly auditLogs: AuditLogsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async findAll(currentUser: CurrentUserPayload, filter: FindKotsDto) {
@@ -329,6 +331,7 @@ export class KotsService {
 
         if (Number(updatedStock.currentStock) <= Number(updatedStock.reorderLevel)) {
           this.realtime.lowStock(branchId, updatedStock);
+          await this.notifications.lowStock(updatedStock);
         }
       }
     }

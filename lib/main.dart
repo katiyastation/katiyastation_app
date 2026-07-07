@@ -5,6 +5,7 @@ import 'package:responsive_framework/responsive_framework.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
+import 'core/app_messenger.dart';
 import 'core/network/api_client.dart';
 import 'core/theme/app_theme.dart';
 import 'router/app_router.dart';
@@ -57,6 +58,7 @@ class KatiyaStationApp extends ConsumerWidget {
       title: 'Katiya Station RMS',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
+      scaffoldMessengerKey: scaffoldMessengerKey,
       routerConfig: router,
       builder: (context, child) => ResponsiveBreakpoints.builder(
         child: child!,
