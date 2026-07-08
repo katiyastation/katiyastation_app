@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -31,7 +32,31 @@ class BarScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Bar Management'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.gradientStart, AppColors.gradientEnd],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.wine_bar,
+                  color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text('Bar Management',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: AppColors.textPrimary)),
+            ),
+          ],
+        ),
         actions: [
           TextButton.icon(
             icon: const Icon(Icons.add_rounded, size: 18),
@@ -45,7 +70,7 @@ class BarScreen extends ConsumerWidget {
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (items) {
           final categories = {'spirits', 'beer', 'wine', 'other'};
-          return SingleChildScrollView(
+          return ResponsiveContent(child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -91,7 +116,7 @@ class BarScreen extends ConsumerWidget {
                 }),
               ],
             ),
-          );
+          ));
         },
       ),
     );

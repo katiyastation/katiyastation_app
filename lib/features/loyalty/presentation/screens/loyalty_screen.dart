@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -62,7 +63,31 @@ class _LoyaltyScreenState extends ConsumerState<LoyaltyScreen>
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Loyalty Program'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.gradientStart, AppColors.gradientEnd],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.star,
+                  color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text('Loyalty Program',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: AppColors.textPrimary)),
+            ),
+          ],
+        ),
         bottom: TabBar(
           controller: _tab,
           indicatorColor: AppColors.primary,
@@ -125,7 +150,7 @@ class _LoyaltyScreenState extends ConsumerState<LoyaltyScreen>
                       );
                     }
 
-                    return ListView.builder(
+                    return ResponsiveContent(child: ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       itemCount: filtered.length,
                       itemBuilder: (ctx, i) {
@@ -141,7 +166,7 @@ class _LoyaltyScreenState extends ConsumerState<LoyaltyScreen>
                           onAwardPoints: () => _showAwardDialog(context, c),
                         ).animate().fadeIn(delay: Duration(milliseconds: i * 30));
                       },
-                    );
+                    ));
                   },
                 ),
               ),
@@ -335,12 +360,11 @@ class _ProgramSummaryBanner extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF1A0A00), Color(0xFF2D1500)],
+          colors: [AppColors.gradientStart, AppColors.gradientEnd],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
       ),
       child: customersAsync.when(
         loading: () => const Center(
@@ -355,7 +379,7 @@ class _ProgramSummaryBanner extends StatelessWidget {
 
           return Row(
             children: [
-              const Icon(Icons.stars_rounded, color: AppColors.primary, size: 32),
+              const Icon(Icons.stars_rounded, color: Colors.white, size: 32),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
@@ -365,10 +389,11 @@ class _ProgramSummaryBanner extends StatelessWidget {
                         style: GoogleFonts.outfit(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary)),
+                            color: Colors.white)),
                     Text('$totalMembers members • $gold Gold tier',
                         style: GoogleFonts.outfit(
-                            fontSize: 12, color: AppColors.textSecondary)),
+                            fontSize: 12,
+                            color: Colors.white.withValues(alpha: 0.85))),
                   ],
                 ),
               ),
@@ -379,10 +404,11 @@ class _ProgramSummaryBanner extends StatelessWidget {
                       style: GoogleFonts.outfit(
                           fontSize: 24,
                           fontWeight: FontWeight.w800,
-                          color: AppColors.primary)),
+                          color: Colors.white)),
                   Text('total points',
                       style: GoogleFonts.outfit(
-                          fontSize: 11, color: AppColors.textSecondary)),
+                          fontSize: 11,
+                          color: Colors.white.withValues(alpha: 0.85))),
                 ],
               ),
             ],

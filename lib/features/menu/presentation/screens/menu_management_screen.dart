@@ -8,6 +8,7 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/utils/responsive_utils.dart';
+import '../../../../core/widgets/confirm_dialog.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../../../menu/domain/entities/menu_entities.dart';
 import '../widgets/recipe_dialog.dart';
@@ -75,85 +76,6 @@ class _MenuUi {
         return AppColors.primary;
     }
   }
-}
-
-/// A single reusable confirmation modal for every destructive / state-changing
-/// action on this screen (delete category, delete item, show/hide item) so
-/// they all look and behave identically instead of drifting apart.
-Future<bool> _confirm(
-  BuildContext context, {
-  required String title,
-  required String message,
-  required String confirmLabel,
-  required Color confirmColor,
-  required IconData icon,
-}) async {
-  final result = await showDialog<bool>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      titlePadding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
-      contentPadding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
-      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-      title: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: confirmColor.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: confirmColor, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              title,
-              style: GoogleFonts.outfit(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ),
-        ],
-      ),
-      content: Text(
-        message,
-        style: GoogleFonts.outfit(
-          fontSize: 13.5,
-          color: AppColors.textSecondary,
-          height: 1.5,
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(ctx, false),
-          style: TextButton.styleFrom(
-            foregroundColor: AppColors.textSecondary,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          ),
-          child: Text('Cancel',
-              style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
-        ),
-        ElevatedButton(
-          onPressed: () => Navigator.pop(ctx, true),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: confirmColor,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
-          child: Text(confirmLabel,
-              style: GoogleFonts.outfit(fontWeight: FontWeight.w700)),
-        ),
-      ],
-    ),
-  );
-  return result ?? false;
 }
 
 InputDecoration _premiumFieldDecoration(
@@ -230,15 +152,18 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
                 ],
               ),
               alignment: Alignment.center,
-              child: const Icon(Icons.restaurant_menu_rounded,
+              child: const Icon(Icons.restaurant_menu,
                   color: Colors.white, size: 20),
             ),
             const SizedBox(width: 13),
-            Column(
+            Flexible(
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   'Menu Management',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.outfit(
                     fontSize: 17.5,
                     fontWeight: FontWeight.w800,
@@ -255,6 +180,8 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
                       itemCount == null
                           ? '${cats.length} categories'
                           : '${cats.length} categories · $itemCount items',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.outfit(
                         fontSize: 11.5,
                         color: AppColors.textSecondary,
@@ -264,76 +191,101 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
                   },
                 ),
               ],
-            ),
+            )),
           ],
         ),
         actions: [
-          OutlinedButton.icon(
-            onPressed: () => _importBulkExcel(context),
-            icon: const Icon(Icons.file_upload_outlined, size: 16),
-            label: Text('Import',
-                style: GoogleFonts.outfit(
-                    fontSize: 12.5, fontWeight: FontWeight.w600)),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.textPrimary,
-              side: const BorderSide(color: AppColors.border),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+          if (context.isMobile) ...[
+            IconButton(
+              onPressed: () => _importBulkExcel(context),
+              icon: const Icon(Icons.file_upload_outlined, size: 20),
+              tooltip: 'Import',
+              color: AppColors.textPrimary,
             ),
-          ),
-          const SizedBox(width: 10),
-          OutlinedButton.icon(
-            onPressed: () => _showCategoryDialog(context),
-            icon: const Icon(Icons.create_new_folder_outlined, size: 16),
-            label: Text('Category',
-                style: GoogleFonts.outfit(
-                    fontSize: 12.5, fontWeight: FontWeight.w600)),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.textPrimary,
-              side: const BorderSide(color: AppColors.border),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+            IconButton(
+              onPressed: () => _showCategoryDialog(context),
+              icon: const Icon(Icons.create_new_folder_outlined, size: 20),
+              tooltip: 'Add Category',
+              color: AppColors.textPrimary,
             ),
-          ),
-          const SizedBox(width: 10),
-          if (_selectedCatId != null)
-            Container(
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.gradientStart, AppColors.gradientEnd],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(10),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.28),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: ElevatedButton.icon(
+            if (_selectedCatId != null)
+              IconButton(
                 onPressed: () => _showItemDialog(context),
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: Text('Add Item',
-                    style: GoogleFonts.outfit(
-                        fontSize: 12.5, fontWeight: FontWeight.w700)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                ),
+                icon: const Icon(Icons.add_rounded, size: 24),
+                tooltip: 'Add Item',
+                color: AppColors.primary,
+              ),
+            const SizedBox(width: 6),
+          ] else ...[
+            OutlinedButton.icon(
+              onPressed: () => _importBulkExcel(context),
+              icon: const Icon(Icons.file_upload_outlined, size: 16),
+              label: Text('Import',
+                  style: GoogleFonts.outfit(
+                      fontSize: 12.5, fontWeight: FontWeight.w600)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.textPrimary,
+                side: const BorderSide(color: AppColors.border),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
               ),
             ),
-          const SizedBox(width: 16),
+            const SizedBox(width: 10),
+            OutlinedButton.icon(
+              onPressed: () => _showCategoryDialog(context),
+              icon: const Icon(Icons.create_new_folder_outlined, size: 16),
+              label: Text('Category',
+                  style: GoogleFonts.outfit(
+                      fontSize: 12.5, fontWeight: FontWeight.w600)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.textPrimary,
+                side: const BorderSide(color: AppColors.border),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+            const SizedBox(width: 10),
+            if (_selectedCatId != null)
+              Container(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.gradientStart, AppColors.gradientEnd],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.28),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: ElevatedButton.icon(
+                  onPressed: () => _showItemDialog(context),
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: Text('Add Item',
+                      style: GoogleFonts.outfit(
+                          fontSize: 12.5, fontWeight: FontWeight.w700)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 11),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+            const SizedBox(width: 16),
+          ],
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -392,37 +344,47 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
               if (mounted) setState(() => _selectedCatId = cats.first.id);
             });
           }
+          final Widget contentBody = _searchQuery.trim().isNotEmpty
+              ? _SearchItemsGrid(
+                  query: _searchQuery,
+                  categories: cats,
+                  onEdit: (item) => _showItemDialog(context, item),
+                  onDelete: (item) => _deleteItem(item),
+                )
+              : (_selectedCatId == null
+                  ? Center(
+                      child: Text('Select a category',
+                          style: GoogleFonts.outfit(
+                              color: AppColors.textSecondary)))
+                  : _ItemsGrid(
+                      catId: _selectedCatId!,
+                      onEdit: (item) => _showItemDialog(context, item),
+                      onDelete: (item) => _deleteItem(item),
+                    ));
+
+          final content = Column(
+            children: [
+              _buildSearchBar(),
+              _buildContentHeader(cats),
+              Expanded(child: contentBody),
+            ],
+          );
+
+          // Narrow screens: swap the fixed side rail for a horizontal
+          // category strip so the item grid gets the full width.
+          if (context.isMobile) {
+            return Column(
+              children: [
+                _buildCategoryStrip(cats),
+                Expanded(child: content),
+              ],
+            );
+          }
+
           return Row(
             children: [
               _buildCategorySidebar(cats),
-              Expanded(
-                child: Column(
-                  children: [
-                    _buildSearchBar(),
-                    _buildContentHeader(cats),
-                    Expanded(
-                      child: _searchQuery.trim().isNotEmpty
-                          ? _SearchItemsGrid(
-                              query: _searchQuery,
-                              categories: cats,
-                              onEdit: (item) => _showItemDialog(context, item),
-                              onDelete: (item) => _deleteItem(item),
-                            )
-                          : (_selectedCatId == null
-                              ? Center(
-                                  child: Text('Select a category',
-                                      style: GoogleFonts.outfit(
-                                          color: AppColors.textSecondary)))
-                              : _ItemsGrid(
-                                  catId: _selectedCatId!,
-                                  onEdit: (item) =>
-                                      _showItemDialog(context, item),
-                                  onDelete: (item) => _deleteItem(item),
-                                )),
-                    ),
-                  ],
-                ),
-              ),
+              Expanded(child: content),
             ],
           );
         },
@@ -579,6 +541,73 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Horizontal category selector used on narrow screens in place of the
+  /// vertical side rail. Tap to select, long-press to delete (parity with
+  /// the sidebar). Scrolls horizontally so any number of categories fit.
+  Widget _buildCategoryStrip(List<MenuCategory> cats) {
+    return Container(
+      height: 54,
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(bottom: BorderSide(color: AppColors.border)),
+      ),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        itemCount: cats.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (ctx, i) {
+          final cat = cats[i];
+          final isSelected = cat.id == _selectedCatId;
+          final typeColor = _MenuUi.typeColor(cat.type);
+          return GestureDetector(
+            onTap: () => setState(() => _selectedCatId = cat.id),
+            onLongPress: () => _deleteCategory(cat.id, cat.name),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? AppColors.primary.withValues(alpha: 0.1)
+                    : _MenuUi.subtleFill,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isSelected
+                      ? AppColors.primary.withValues(alpha: 0.4)
+                      : Colors.transparent,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration:
+                        BoxDecoration(color: typeColor, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    cat.name,
+                    style: GoogleFonts.outfit(
+                      fontSize: 13,
+                      fontWeight:
+                          isSelected ? FontWeight.w700 : FontWeight.w500,
+                      color: isSelected
+                          ? AppColors.primary
+                          : AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -1073,7 +1102,7 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
   }
 
   Future<void> _deleteCategory(String id, String name) async {
-    final confirmed = await _confirm(
+    final confirmed = await showConfirmDialog(
       context,
       title: 'Delete Category?',
       message:
@@ -1089,7 +1118,7 @@ class _MenuManagementScreenState extends ConsumerState<MenuManagementScreen> {
   }
 
   Future<void> _deleteItem(MenuItem item) async {
-    final confirmed = await _confirm(
+    final confirmed = await showConfirmDialog(
       context,
       title: 'Delete Menu Item?',
       message:
@@ -1265,7 +1294,7 @@ class _MenuItemCard extends StatelessWidget {
 
   Future<void> _toggleAvailability(BuildContext context) async {
     final turningOff = item.isAvailable;
-    final confirmed = await _confirm(
+    final confirmed = await showConfirmDialog(
       context,
       title: turningOff ? 'Turn Off Item?' : 'Turn On Item?',
       message: turningOff

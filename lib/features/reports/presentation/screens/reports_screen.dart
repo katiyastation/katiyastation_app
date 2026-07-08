@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -193,7 +194,31 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Reports & Analytics'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.gradientStart, AppColors.gradientEnd],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.bar_chart,
+                  color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text('Reports & Analytics',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: AppColors.textPrimary)),
+            ),
+          ],
+        ),
         actions: [
           DropdownButton<String>(
             value: _timeframe,
@@ -244,7 +269,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     final profitColor = netProfit >= 0 ? AppColors.success : AppColors.error;
     final byMethod = (_summary?['by_payment_method'] as List?) ?? [];
 
-    return SingleChildScrollView(
+    return ResponsiveContent(
+      alignment: Alignment.topLeft,
+      child: SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -354,7 +381,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           const SizedBox(height: 24),
         ],
       ),
-    );
+    ));
   }
 
   String _rangeText() {
@@ -383,6 +410,35 @@ class _ExportBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final label = Text(
+      exporting ? 'Preparing document…' : 'Export or print this report',
+      style: GoogleFonts.outfit(
+          fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.textPrimary),
+    );
+    final leadingIcon = Icon(
+        exporting ? Icons.hourglass_top_rounded : Icons.download_rounded,
+        size: 20,
+        color: AppColors.primary);
+    const btnPadding = EdgeInsets.symmetric(horizontal: 10, vertical: 10);
+    final printBtn = OutlinedButton.icon(
+      onPressed: exporting ? null : onPrint,
+      style: OutlinedButton.styleFrom(padding: btnPadding),
+      icon: const Icon(Icons.print_rounded, size: 16),
+      label: const FittedBox(fit: BoxFit.scaleDown, child: Text('Print')),
+    );
+    final pdfBtn = ElevatedButton.icon(
+      onPressed: exporting ? null : onPdf,
+      style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: Colors.white, padding: btnPadding),
+      icon: const Icon(Icons.picture_as_pdf_rounded, size: 16),
+      label: const FittedBox(fit: BoxFit.scaleDown, child: Text('PDF')),
+    );
+    final excelBtn = ElevatedButton.icon(
+      onPressed: exporting ? null : onExcel,
+      style: ElevatedButton.styleFrom(backgroundColor: AppColors.success, foregroundColor: Colors.white, padding: btnPadding),
+      icon: const Icon(Icons.table_chart_rounded, size: 16),
+      label: const FittedBox(fit: BoxFit.scaleDown, child: Text('Excel')),
+    );
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -390,35 +446,33 @@ class _ExportBar extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.border),
       ),
-      child: Row(children: [
-        Icon(exporting ? Icons.hourglass_top_rounded : Icons.download_rounded, size: 20, color: AppColors.primary),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            exporting ? 'Preparing document…' : 'Export or print this report',
-            style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.textPrimary),
-          ),
-        ),
-        Wrap(spacing: 8, children: [
-          OutlinedButton.icon(
-            onPressed: exporting ? null : onPrint,
-            icon: const Icon(Icons.print_rounded, size: 16),
-            label: const Text('Print'),
-          ),
-          ElevatedButton.icon(
-            onPressed: exporting ? null : onPdf,
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: Colors.white),
-            icon: const Icon(Icons.picture_as_pdf_rounded, size: 16),
-            label: const Text('PDF'),
-          ),
-          ElevatedButton.icon(
-            onPressed: exporting ? null : onExcel,
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.success, foregroundColor: Colors.white),
-            icon: const Icon(Icons.table_chart_rounded, size: 16),
-            label: const Text('Excel'),
-          ),
-        ]),
-      ]),
+      // On narrow screens the label goes on top and the three buttons share
+      // one row below (each Expanded) so they always fit together.
+      child: context.isMobile
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  leadingIcon,
+                  const SizedBox(width: 10),
+                  Expanded(child: label),
+                ]),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(child: printBtn),
+                  const SizedBox(width: 8),
+                  Expanded(child: pdfBtn),
+                  const SizedBox(width: 8),
+                  Expanded(child: excelBtn),
+                ]),
+              ],
+            )
+          : Row(children: [
+              leadingIcon,
+              const SizedBox(width: 10),
+              Expanded(child: label),
+              Wrap(spacing: 8, children: [printBtn, pdfBtn, excelBtn]),
+            ]),
     );
   }
 }
@@ -448,8 +502,17 @@ class _ReportSummaryCard extends StatelessWidget {
               Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
             ]),
             const SizedBox(height: 14),
-            Text(value, style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-            Text(label, style: GoogleFonts.outfit(fontSize: 11, color: AppColors.textSecondary)),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(value,
+                  maxLines: 1,
+                  style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            ),
+            Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.outfit(fontSize: 11, color: AppColors.textSecondary)),
           ],
         ),
       ),
@@ -469,11 +532,19 @@ class _BreakdownRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Row(children: [
-          Container(width: 12, height: 12, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3))),
-          const SizedBox(width: 10),
-          Text(label, style: GoogleFonts.outfit(fontSize: 13, color: AppColors.textPrimary)),
-        ]),
+        Expanded(
+          child: Row(children: [
+            Container(width: 12, height: 12, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3))),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(fontSize: 13, color: AppColors.textPrimary)),
+            ),
+          ]),
+        ),
+        const SizedBox(width: 12),
         Text('NPR ${fmt.format(val)}', style: GoogleFonts.outfit(fontSize: 13, color: AppColors.textPrimary, fontWeight: FontWeight.w500)),
       ],
     );

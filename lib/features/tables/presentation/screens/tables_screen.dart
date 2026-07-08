@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/widgets/confirm_dialog.dart';
 import '../../../../core/utils/responsive_utils.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/tables_provider.dart';
@@ -58,7 +59,7 @@ class _TablesScreenState extends ConsumerState<TablesScreen>
                 ),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.table_restaurant_rounded,
+              child: const Icon(Icons.grid_view,
                   color: Colors.white, size: 18),
             ),
             const SizedBox(width: 10),
@@ -843,47 +844,25 @@ class _TablesScreenState extends ConsumerState<TablesScreen>
 
 
   void _confirmCloseSession(
-      BuildContext context, RestaurantTable table, TableSession session) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Close Session?',
-            style: GoogleFonts.outfit(fontWeight: FontWeight.w700)),
-        content: Text(
-            'Are you sure you want to close session ${session.sessionNumber} '
-            'and free Table ${table.tableNumber}?\n\n'
-            'This should only be done if no payment is required.',
-            style:
-                GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 14)),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              final ok = await ref
-                  .read(tableNotifierProvider.notifier)
-                  .closeSession(table.id, session.id);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text(
-                        ok ? 'Table freed!' : 'Failed to close session'),
-                    backgroundColor:
-                        ok ? AppColors.success : AppColors.error));
-              }
-            },
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.error,
-                foregroundColor: Colors.white),
-            child: const Text('Close Session'),
-          ),
-        ],
-      ),
+      BuildContext context, RestaurantTable table, TableSession session) async {
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Close Session?',
+      message: 'Are you sure you want to close session ${session.sessionNumber} '
+          'and free Table ${table.tableNumber}?\n\n'
+          'This should only be done if no payment is required.',
+      confirmLabel: 'Close Session',
+      icon: Icons.event_available_rounded,
     );
+    if (!confirmed || !context.mounted) return;
+    final ok = await ref
+        .read(tableNotifierProvider.notifier)
+        .closeSession(table.id, session.id);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(ok ? 'Table freed!' : 'Failed to close session'),
+          backgroundColor: ok ? AppColors.success : AppColors.error));
+    }
   }
 
   void _showTableContextMenu(BuildContext context, RestaurantTable table) {
@@ -1191,44 +1170,24 @@ class _TablesScreenState extends ConsumerState<TablesScreen>
     );
   }
 
-  void _confirmDeleteTable(BuildContext context, RestaurantTable table) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Delete Table ${table.tableNumber}?',
-            style: GoogleFonts.outfit(fontWeight: FontWeight.w700)),
-        content: Text(
-            'This will permanently delete Table ${table.tableNumber}. '
-            'This cannot be undone.',
-            style:
-                GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 14)),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              final ok = await ref
-                  .read(tableNotifierProvider.notifier)
-                  .deleteTable(table.id);
-              if (!ok && context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Failed to delete table. Make sure it is not occupied.'),
-                    backgroundColor: AppColors.error));
-              }
-            },
-            style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.error,
-                foregroundColor: Colors.white),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+  void _confirmDeleteTable(BuildContext context, RestaurantTable table) async {
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Delete Table ${table.tableNumber}?',
+      message: 'This will permanently delete Table ${table.tableNumber}. '
+          'This cannot be undone.',
+      confirmLabel: 'Delete',
+      icon: Icons.delete_outline_rounded,
     );
+    if (!confirmed || !context.mounted) return;
+    final ok =
+        await ref.read(tableNotifierProvider.notifier).deleteTable(table.id);
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content:
+              Text('Failed to delete table. Make sure it is not occupied.'),
+          backgroundColor: AppColors.error));
+    }
   }
 }
 
@@ -1357,7 +1316,7 @@ class _FloorView extends StatelessWidget {
                         maxCrossAxisExtent: isNarrow ? 160 : 180,
                         crossAxisSpacing: 12,
                         mainAxisSpacing: 12,
-                        childAspectRatio: isNarrow ? 0.95 : 0.88,
+                        childAspectRatio: isNarrow ? 0.85 : 0.82,
                       ),
                       itemCount: filtered.length,
                       itemBuilder: (ctx, i) => _TableCard(
@@ -2053,14 +2012,20 @@ class _TableCard extends ConsumerWidget {
               ),
               const Spacer(),
               // ── Table Number ───────────────────────────────────────
-              Text(table.tableNumber,
-                  style: GoogleFonts.outfit(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: isDisabled
-                          ? AppColors.textHint
-                          : AppColors.textPrimary)),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(table.tableNumber,
+                    maxLines: 1,
+                    style: GoogleFonts.outfit(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: isDisabled
+                            ? AppColors.textHint
+                            : AppColors.textPrimary)),
+              ),
               Text(table.section,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.outfit(
                       fontSize: 10,

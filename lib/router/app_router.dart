@@ -144,7 +144,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     refreshListenable: refresh,
     redirect: (context, state) {
       final authState = ref.read(authNotifierProvider);
-      final isLoggedIn = authState.value != null;
+      // Use valueOrNull, not value: AsyncValue.value rethrows when the
+      // state is AsyncError (e.g. a failed login), which would blow up
+      // inside GoRouter's redirect/notification dispatch.
+      final isLoggedIn = authState.valueOrNull != null;
       final isLoginPage = state.matchedLocation == '/login';
       final isSplash = state.matchedLocation == '/';
 
@@ -159,7 +162,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       if (!isLoggedIn && !isLoginPage) return '/login';
       if (isLoggedIn) {
-        final role = authState.value?.role;
+        final role = authState.valueOrNull?.role;
         if (isLoginPage) {
           return role == 'super_admin' ? '/super-admin' : '/dashboard';
         }

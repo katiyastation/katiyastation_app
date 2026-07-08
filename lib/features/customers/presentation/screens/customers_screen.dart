@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -43,7 +44,31 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Customer Management'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.gradientStart, AppColors.gradientEnd],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.people,
+                  color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text('Customer Management',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: AppColors.textPrimary)),
+            ),
+          ],
+        ),
         actions: [
           TextButton.icon(icon: const Icon(Icons.person_add_rounded, size: 18), label: const Text('Add Customer'), onPressed: () => _showAddDialog(context)),
         ],
@@ -76,7 +101,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                   const SizedBox(height: 12),
                   ElevatedButton(onPressed: () => _showAddDialog(context), child: const Text('Add Customer')),
                 ]))
-              : ListView.builder(
+              : ResponsiveContent(child: ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: filtered.length,
                   itemBuilder: (ctx, i) {
@@ -110,7 +135,7 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
                       ]),
                     ).animate().fadeIn(delay: Duration(milliseconds: i * 25));
                   },
-                )),
+                ))),
         ],
       ),
     );
@@ -122,13 +147,18 @@ class _CustomersScreenState extends ConsumerState<CustomersScreen> {
     final addrCtrl = TextEditingController();
     showDialog(context: context, builder: (ctx) => AlertDialog(
       title: const Text('Add Customer'),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Full Name *')),
-        const SizedBox(height: 12),
-        TextField(controller: phoneCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone Number')),
-        const SizedBox(height: 12),
-        TextField(controller: addrCtrl, decoration: const InputDecoration(labelText: 'Address')),
-      ]),
+      content: SizedBox(
+        width: context.dialogWidth(400),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Full Name *')),
+            const SizedBox(height: 12),
+            TextField(controller: phoneCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone Number')),
+            const SizedBox(height: 12),
+            TextField(controller: addrCtrl, decoration: const InputDecoration(labelText: 'Address')),
+          ]),
+        ),
+      ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
         ElevatedButton(onPressed: () async {

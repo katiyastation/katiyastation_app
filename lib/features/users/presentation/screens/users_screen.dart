@@ -14,9 +14,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/widgets/reset_password_dialog.dart';
+import '../../../../core/widgets/confirm_dialog.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 
 final branchUsersProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
@@ -136,26 +138,16 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
     final id = user['id'] as String;
     final name = user['full_name'] as String? ?? 'this user';
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete User'),
-        content: Text(
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Delete User',
+      message:
           'Permanently delete the account for "$name"? They will lose access immediately. '
           'Past bills, orders and reports they were involved in are kept. This cannot be undone.',
-          style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 13, height: 1.4),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: Colors.white),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Delete',
+      icon: Icons.delete_outline_rounded,
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
 
     setState(() => _busyUserId = id);
@@ -178,7 +170,31 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Branch Users'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.gradientStart, AppColors.gradientEnd],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.manage_accounts,
+                  color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text('Branch Users',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: AppColors.textPrimary)),
+            ),
+          ],
+        ),
         actions: [
           TextButton.icon(
             icon: const Icon(Icons.person_add_rounded, size: 18),
@@ -220,7 +236,9 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
                   );
                 }
 
-                return ListView.builder(
+                return ResponsiveContent(
+                  alignment: Alignment.topLeft,
+                  child: ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: filtered.length,
                   itemBuilder: (ctx, i) {
@@ -239,7 +257,7 @@ class _UsersScreenState extends ConsumerState<UsersScreen> {
                       onDelete: () => _deleteUser(user),
                     ).animate().fadeIn(delay: Duration(milliseconds: i * 30));
                   },
-                );
+                ));
               },
             ),
           ),

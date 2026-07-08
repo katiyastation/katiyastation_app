@@ -4,6 +4,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/responsive_utils.dart';
+import '../../../../core/widgets/confirm_dialog.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -27,7 +29,31 @@ class BranchManagementScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Branch Management'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.gradientStart, AppColors.gradientEnd],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.store,
+                  color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text('Branch Management',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: AppColors.textPrimary)),
+            ),
+          ],
+        ),
         actions: [
           if (profile?.isSuperAdmin == true || profile?.isBranchManager == true)
             TextButton.icon(
@@ -61,7 +87,9 @@ class BranchManagementScreen extends ConsumerWidget {
             );
           }
 
-          return ListView.builder(
+          return ResponsiveContent(
+            alignment: Alignment.topLeft,
+            child: ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: branches.length,
             itemBuilder: (ctx, i) => _BranchCard(
@@ -71,7 +99,7 @@ class BranchManagementScreen extends ConsumerWidget {
               onDelete: () => _deleteBranch(context, ref, branches[i]['id'] as String),
               onToggle: () => _toggleActive(ref, branches[i]),
             ).animate().fadeIn(delay: Duration(milliseconds: i * 50)).slideY(begin: 0.1),
-          );
+          ));
         },
       ),
     );
@@ -215,23 +243,15 @@ class BranchManagementScreen extends ConsumerWidget {
     // Capture messenger before async gap
     final messenger = ScaffoldMessenger.of(context);
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Branch'),
-        content: const Text(
-            'This will permanently delete the branch. All data linked to this branch will remain but the branch will be removed.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Delete Branch',
+      message:
+          'This will permanently delete the branch. All data linked to this branch will remain but the branch will be removed.',
+      confirmLabel: 'Delete',
+      icon: Icons.delete_outline_rounded,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
 
     try {
       await ApiClient.instance.delete(ApiConstants.branchById(id));

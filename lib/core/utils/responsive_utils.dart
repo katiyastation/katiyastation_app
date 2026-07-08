@@ -39,3 +39,34 @@ extension ResponsiveContext on BuildContext {
     return preferred < screenWidth - margin ? preferred : screenWidth - margin;
   }
 }
+
+/// Centers [child] and caps its width at [maxWidth] on wide screens so
+/// single-column list/detail content doesn't stretch edge-to-edge on a
+/// desktop/web viewport. On phones and tablets it is a transparent
+/// pass-through (the constraint never bites below [maxWidth]).
+///
+/// Use it to wrap the scrolling body of a screen, e.g.
+/// `body: ResponsiveContent(child: ListView(...))`.
+class ResponsiveContent extends StatelessWidget {
+  final Widget child;
+  final double maxWidth;
+  final AlignmentGeometry alignment;
+
+  const ResponsiveContent({
+    super.key,
+    required this.child,
+    this.maxWidth = 1100,
+    this.alignment = Alignment.topCenter,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: alignment,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: child,
+      ),
+    );
+  }
+}

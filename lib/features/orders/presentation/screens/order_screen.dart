@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/widgets/confirm_dialog.dart';
 import '../../../../core/utils/responsive_utils.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
 import '../providers/order_provider.dart';
@@ -1228,25 +1229,15 @@ class _KotHistoryCardState extends ConsumerState<_KotHistoryCard> {
     if (newQty < 0) return;
     // Confirm if cancelling (qty = 0)
     if (newQty == 0) {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: AppColors.surface,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text('Remove Item?', style: GoogleFonts.outfit(fontWeight: FontWeight.w700)),
-          content: Text('This will cancel this item from the KOT.',
-              style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 13)),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: Colors.white),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Cancel Item'),
-            ),
-          ],
-        ),
+      final confirmed = await showConfirmDialog(
+        context,
+        title: 'Remove Item?',
+        message: 'This will cancel this item from the KOT.',
+        confirmLabel: 'Cancel Item',
+        cancelLabel: 'Keep',
+        icon: Icons.remove_shopping_cart_outlined,
       );
-      if (confirmed != true) return;
+      if (!confirmed) return;
     }
 
     final ok = await ref.read(tableNotifierProvider.notifier).updateKotItem(kotItemId, newQty);

@@ -4,6 +4,8 @@ import 'package:flutter_animate/flutter_animate.dart' hide ShimmerEffect;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/responsive_utils.dart';
+import '../../../../core/widgets/confirm_dialog.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -37,7 +39,31 @@ class _SupplierScreenState extends ConsumerState<SupplierScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Suppliers'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.gradientStart, AppColors.gradientEnd],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.local_shipping,
+                  color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text('Suppliers',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: AppColors.textPrimary)),
+            ),
+          ],
+        ),
         actions: [
           TextButton.icon(
             icon: const Icon(Icons.add_rounded, size: 18),
@@ -125,7 +151,7 @@ class _SupplierScreenState extends ConsumerState<SupplierScreen> {
                   );
                 }
 
-                return ListView.builder(
+                return ResponsiveContent(child: ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: filtered.length,
                   itemBuilder: (ctx, i) => _SupplierCard(
@@ -133,7 +159,7 @@ class _SupplierScreenState extends ConsumerState<SupplierScreen> {
                     onEdit: () => _showSupplierDialog(context, filtered[i]),
                     onDelete: () => _deleteSupplier(filtered[i]['id'] as String),
                   ).animate().fadeIn(delay: Duration(milliseconds: i * 30)),
-                );
+                ));
               },
             ),
           ),
@@ -159,7 +185,9 @@ class _SupplierScreenState extends ConsumerState<SupplierScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(isEdit ? 'Edit Supplier' : 'Add Supplier'),
-        content: SingleChildScrollView(
+        content: SizedBox(
+          width: context.dialogWidth(440),
+          child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -204,6 +232,7 @@ class _SupplierScreenState extends ConsumerState<SupplierScreen> {
               ),
             ],
           ),
+        ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
@@ -250,23 +279,15 @@ class _SupplierScreenState extends ConsumerState<SupplierScreen> {
   }
 
   Future<void> _deleteSupplier(String id) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Supplier'),
-        content: const Text(
-            'Are you sure? This supplier will be removed. Existing purchases will not be affected.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Delete Supplier',
+      message:
+          'Are you sure? This supplier will be removed. Existing purchases will not be affected.',
+      confirmLabel: 'Delete',
+      icon: Icons.delete_outline_rounded,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     await ApiClient.instance.delete(ApiConstants.supplierById(id));
     ref.invalidate(suppliersProvider);
   }

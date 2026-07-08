@@ -293,20 +293,32 @@ class _StatCard extends StatelessWidget {
             alignment: Alignment.center,
             child: Icon(icon, color: color, size: 18),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(value,
-                  style: GoogleFonts.outfit(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
-                      letterSpacing: -0.2)),
-              const SizedBox(height: 1),
-              Text(label,
-                  style: GoogleFonts.outfit(
-                      fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
-            ],
+          Flexible(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(value,
+                        maxLines: 1,
+                        style: GoogleFonts.outfit(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimary,
+                            letterSpacing: -0.2)),
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.outfit(
+                        fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
+              ],
+            ),
           ),
         ],
       ),

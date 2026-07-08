@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -44,7 +45,31 @@ class _PaymentHistoryScreenState extends ConsumerState<PaymentHistoryScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Payment History'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.gradientStart, AppColors.gradientEnd],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.receipt_long,
+                  color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text('Payment History',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: AppColors.textPrimary)),
+            ),
+          ],
+        ),
         actions: [
           TextButton.icon(
             icon: const Icon(Icons.date_range_rounded, size: 16),
@@ -117,11 +142,11 @@ class _PaymentHistoryScreenState extends ConsumerState<PaymentHistoryScreen> {
               data: (bills) {
                 final f = _filter(bills);
                 if (f.isEmpty) return Center(child: Text('No payments found', style: GoogleFonts.outfit(color: AppColors.textSecondary)));
-                return ListView.builder(
+                return ResponsiveContent(child: ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: f.length,
                   itemBuilder: (ctx, i) => _PaymentCard(bill: f[i], fmt: fmt).animate().fadeIn(delay: Duration(milliseconds: i * 25)),
-                );
+                ));
               },
             ),
           ),

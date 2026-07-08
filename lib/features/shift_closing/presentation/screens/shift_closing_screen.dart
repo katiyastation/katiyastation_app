@@ -4,6 +4,8 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/responsive_utils.dart';
+import '../../../../core/widgets/confirm_dialog.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -68,7 +70,31 @@ class _ShiftClosingScreenState extends ConsumerState<ShiftClosingScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Shift Closing'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.gradientStart, AppColors.gradientEnd],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.lock,
+                  color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text('Shift Closing',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: AppColors.textPrimary)),
+            ),
+          ],
+        ),
         actions: [
           TextButton.icon(
             icon: const Icon(Icons.refresh_rounded, size: 18),
@@ -81,7 +107,9 @@ class _ShiftClosingScreenState extends ConsumerState<ShiftClosingScreen> {
           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
           : _summary == null
               ? const Center(child: Text('Unable to load summary'))
-              : SingleChildScrollView(
+              : ResponsiveContent(
+                  alignment: Alignment.topLeft,
+                  child: SingleChildScrollView(
                   padding: const EdgeInsets.all(20),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -130,29 +158,22 @@ class _ShiftClosingScreenState extends ConsumerState<ShiftClosingScreen> {
                         ).animate().fadeIn(),
                     ],
                   ),
-                ),
+                )),
     );
   }
 
   Future<void> _closeShift(BuildContext context, dynamic profile) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Close Shift'),
-        content: const Text(
-            'This will record the shift closing for today. The cashier summary will be saved. Continue?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Close Shift')),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Close Shift',
+      message:
+          'This will record the shift closing for today. The cashier summary will be saved. Continue?',
+      confirmLabel: 'Close Shift',
+      confirmColor: AppColors.primary,
+      icon: Icons.lock_clock_rounded,
     );
 
-    if (confirmed != true) return;
+    if (!confirmed) return;
     setState(() => _submitting = true);
 
     try {
@@ -207,26 +228,26 @@ class _DateBanner extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF1A0A00), Color(0xFF2D1500)],
+          colors: [AppColors.gradientStart, AppColors.gradientEnd],
         ),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.calendar_today_rounded, color: AppColors.primary, size: 28),
+          const Icon(Icons.calendar_today_rounded, color: Colors.white, size: 28),
           const SizedBox(width: 14),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Today\'s Shift',
                   style: GoogleFonts.outfit(
-                      fontSize: 14, color: AppColors.textSecondary)),
+                      fontSize: 14,
+                      color: Colors.white.withValues(alpha: 0.85))),
               Text(DateFormat('EEEE, dd MMMM yyyy').format(now),
                   style: GoogleFonts.outfit(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary)),
+                      color: Colors.white)),
             ],
           ),
         ],
@@ -245,7 +266,7 @@ class _OverviewCards extends StatelessWidget {
     return GridView.count(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
+      crossAxisCount: context.responsiveValue(mobile: 2, tablet: 3, desktop: 4),
       mainAxisSpacing: 12,
       crossAxisSpacing: 12,
       childAspectRatio: 2,
@@ -315,13 +336,13 @@ class _PaymentBreakdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final methods = [
-      ('Cash', 'cash', Icons.money_rounded, AppColors.success),
-      ('Card', 'card', Icons.credit_card_rounded, AppColors.info),
-      ('eSewa', 'esewa', Icons.phone_android_rounded, AppColors.primary),
-      ('Khalti', 'khalti', Icons.account_balance_wallet_rounded, const Color(0xFF5C2D91)),
-      ('FonePay', 'fonepay', Icons.qr_code_scanner_rounded, AppColors.warning),
-      ('Credit', 'credit', Icons.receipt_long_rounded, AppColors.error),
+    final methods = <(String, String, IconData, Color, String?)>[
+      ('Cash', 'cash', Icons.money_rounded, AppColors.success, null),
+      ('Card', 'card', Icons.credit_card_rounded, AppColors.info, null),
+      ('eSewa', 'esewa', Icons.phone_android_rounded, const Color(0xFF60BB46), 'assets/icons/esewa.png'),
+      ('Khalti', 'khalti', Icons.account_balance_wallet_rounded, const Color(0xFF5C2D91), 'assets/icons/khalti.png'),
+      ('FonePay', 'fonepay', Icons.qr_code_scanner_rounded, AppColors.warning, 'assets/icons/fonepay.png'),
+      ('Credit', 'credit', Icons.receipt_long_rounded, AppColors.error, null),
     ];
 
     return Container(
@@ -333,14 +354,22 @@ class _PaymentBreakdown extends StatelessWidget {
       child: Column(
         children: methods.asMap().entries.map((entry) {
           final i = entry.key;
-          final (label, key, icon, color) = entry.value;
+          final (label, key, icon, color, asset) = entry.value;
           final amount = (summary[key] as num?)?.toDouble() ?? 0;
           return Column(
             children: [
               if (i > 0) const Divider(height: 1),
               ListTile(
                 dense: true,
-                leading: Icon(icon, color: color, size: 20),
+                leading: asset != null
+                    ? Image.asset(
+                        asset,
+                        width: 22,
+                        height: 22,
+                        errorBuilder: (_, __, ___) =>
+                            Icon(icon, color: color, size: 20),
+                      )
+                    : Icon(icon, color: color, size: 20),
                 title: Text(label,
                     style: GoogleFonts.outfit(
                         fontSize: 13, color: AppColors.textPrimary)),

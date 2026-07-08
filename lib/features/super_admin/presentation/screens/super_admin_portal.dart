@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:excel/excel.dart' hide Border, BorderStyle;
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/widgets/confirm_dialog.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/utils/responsive_utils.dart';
@@ -76,7 +77,7 @@ class _SuperAdminPortalState extends ConsumerState<SuperAdminPortal>
               color: AppColors.primary.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(Icons.admin_panel_settings_rounded,
+            child: const Icon(Icons.verified_user,
                 color: AppColors.primary, size: 22),
           ),
           const SizedBox(width: 12),
@@ -145,7 +146,7 @@ class _SuperAdminPortalState extends ConsumerState<SuperAdminPortal>
                               role.contains(_search);
                         }).toList();
 
-                  return ListView.builder(
+                  return ResponsiveContent(child: ListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: filtered.length,
                     itemBuilder: (ctx, i) => _UserCard(
@@ -158,7 +159,7 @@ class _SuperAdminPortalState extends ConsumerState<SuperAdminPortal>
                         userName: filtered[i]['full_name'] as String? ?? 'this user',
                       ),
                     ).animate().fadeIn(delay: Duration(milliseconds: i * 40)),
-                  );
+                  ));
                 },
               ),
             ),
@@ -182,26 +183,16 @@ class _SuperAdminPortalState extends ConsumerState<SuperAdminPortal>
     // Capture messenger before async gap
     final messenger = ScaffoldMessenger.of(context);
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('$action Account'),
-        content: Text(
-            '${isActive ? 'This will prevent' : 'This will restore'} $name\'s ability to log in.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-                backgroundColor: isActive ? AppColors.error : AppColors.success),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(action),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: '$action Account',
+      message:
+          '${isActive ? 'This will prevent' : 'This will restore'} $name\'s ability to log in.',
+      confirmLabel: action,
+      confirmColor: isActive ? AppColors.error : AppColors.success,
+      icon: isActive ? Icons.block_rounded : Icons.check_circle_outline_rounded,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     try {
       await ApiClient.instance.patch(ApiConstants.toggleUserActive(user['id'] as String));
       ref.invalidate(allUsersProvider);
@@ -644,7 +635,7 @@ class _AccessLogsTab extends ConsumerWidget {
           );
         }
         final users = usersAsync.value ?? [];
-        return ListView.builder(
+        return ResponsiveContent(child: ListView.builder(
           padding: const EdgeInsets.all(16),
           itemCount: logs.length,
           itemBuilder: (_, i) {
@@ -704,7 +695,7 @@ class _AccessLogsTab extends ConsumerWidget {
               ]),
             ).animate().fadeIn(delay: Duration(milliseconds: i * 20));
           },
-        );
+        ));
       },
     );
   }

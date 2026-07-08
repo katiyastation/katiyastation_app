@@ -135,7 +135,31 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Inventory'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.gradientStart, AppColors.gradientEnd],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.inventory_2,
+                  color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text('Inventory',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: AppColors.textPrimary)),
+            ),
+          ],
+        ),
         actions: [
           TextButton.icon(icon: const Icon(Icons.add_rounded, size: 18), label: const Text('Add Item'), onPressed: () => _showAddDialog(context)),
         ],
@@ -182,13 +206,16 @@ class _InventoryScreenState extends ConsumerState<InventoryScreen> {
               final out = items.where((i) => i.isOut).length;
               return Container(
                 color: AppColors.surface, padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                child: Row(children: [
-                  _SChip('Total', '${items.length}', AppColors.info),
-                  const SizedBox(width: 8),
-                  _SChip('Low Stock', '$low', AppColors.warning),
-                  const SizedBox(width: 8),
-                  _SChip('Out of Stock', '$out', AppColors.error),
-                ]),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(children: [
+                    _SChip('Total', '${items.length}', AppColors.info),
+                    const SizedBox(width: 8),
+                    _SChip('Low Stock', '$low', AppColors.warning),
+                    const SizedBox(width: 8),
+                    _SChip('Out of Stock', '$out', AppColors.error),
+                  ]),
+                ),
               );
             },
           ),

@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -37,7 +38,29 @@ class NotificationsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Notifications')),
+      appBar: AppBar(
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.gradientStart, AppColors.gradientEnd],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.notifications_rounded,
+                  color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Text('Notifications',
+                style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 18,
+                    color: AppColors.textPrimary)),
+          ],
+        ),
+      ),
       body: notifsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
         error: (e, _) => Center(child: Text('Error: $e')),
@@ -47,7 +70,7 @@ class NotificationsScreen extends ConsumerWidget {
                 const SizedBox(height: 16),
                 Text('No notifications', style: GoogleFonts.outfit(color: AppColors.textSecondary)),
               ]))
-            : ListView.builder(
+            : ResponsiveContent(child: ListView.builder(
                 padding: const EdgeInsets.all(16),
                 itemCount: rows.length,
                 itemBuilder: (ctx, i) {
@@ -88,7 +111,7 @@ class NotificationsScreen extends ConsumerWidget {
                     ]),
                   ).animate().fadeIn(delay: Duration(milliseconds: i * 25));
                 },
-              ),
+              )),
       ),
     );
   }

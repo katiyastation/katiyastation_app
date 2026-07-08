@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:responsive_framework/responsive_framework.dart';
 import '../constants/app_colors.dart';
+import 'confirm_dialog.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../router/app_router.dart';
 import '../network/realtime_sync.dart';
@@ -47,6 +48,15 @@ class AppShell extends ConsumerWidget {
               currentPath: currentPath,
               profile: profile,
               onSignOut: () async {
+                final confirmed = await showConfirmDialog(
+                  context,
+                  title: 'Sign Out?',
+                  message:
+                      'You will be signed out and need to log in again to continue.',
+                  confirmLabel: 'Sign Out',
+                  icon: Icons.logout_rounded,
+                );
+                if (!confirmed) return;
                 await ref.read(authNotifierProvider.notifier).signOut();
                 if (context.mounted) context.go('/login');
               },
@@ -83,7 +93,7 @@ class AppShell extends ConsumerWidget {
       bottomNavigationBar: NavigationBar(
         height: 64,
         selectedIndex: selectedIndex < 0 ? 0 : selectedIndex,
-        labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         backgroundColor: AppColors.surface,
         indicatorColor: AppColors.primary.withValues(alpha: 0.12),
         onDestinationSelected: (i) {
@@ -143,9 +153,10 @@ class AppShell extends ConsumerWidget {
                       fontWeight: FontWeight.w700,
                       color: AppColors.textPrimary)),
               const SizedBox(height: 12),
-              GridView.builder(
+              Flexible(
+                child: GridView.builder(
                 shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
+                physics: const ClampingScrollPhysics(),
                 gridDelegate:
                     const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 4,
@@ -205,12 +216,23 @@ class AppShell extends ConsumerWidget {
                   );
                 },
               ),
+              ),
               const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
                 child: TextButton(
                   onPressed: () async {
                     Navigator.pop(ctx);
+                    if (!context.mounted) return;
+                    final confirmed = await showConfirmDialog(
+                      context,
+                      title: 'Sign Out?',
+                      message:
+                          'You will be signed out and need to log in again to continue.',
+                      confirmLabel: 'Sign Out',
+                      icon: Icons.logout_rounded,
+                    );
+                    if (!confirmed || !context.mounted) return;
                     await ref.read(authNotifierProvider.notifier).signOut();
                     if (context.mounted) context.go('/login');
                   },

@@ -75,7 +75,29 @@ class _AttendanceScreenState extends ConsumerState<AttendanceScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Attendance')),
+      appBar: AppBar(
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.gradientStart, AppColors.gradientEnd],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.fingerprint,
+                  color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Text('Attendance',
+                style: GoogleFonts.outfit(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 18,
+                    color: AppColors.textPrimary)),
+          ],
+        ),
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
           : _noStaffRecordMessage != null

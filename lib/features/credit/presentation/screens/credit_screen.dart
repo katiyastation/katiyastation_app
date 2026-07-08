@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
 import 'package:katiya_station_rms/features/cashier/domain/entities/bill_entities.dart';
@@ -38,7 +39,33 @@ class _CreditScreenState extends ConsumerState<CreditScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      appBar: AppBar(title: const Text('Credit (Udhaaro) Management')),
+      appBar: AppBar(
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.gradientStart, AppColors.gradientEnd],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.credit_card,
+                  color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text('Credit (Udhaaro) Management',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: AppColors.textPrimary)),
+            ),
+          ],
+        ),
+      ),
       body: Column(
         children: [
           creditsAsync.when(
@@ -59,7 +86,9 @@ class _CreditScreenState extends ConsumerState<CreditScreen> {
                       _SC('Total Accounts', '${credits.length}', AppColors.info),
                     ]),
                     const SizedBox(height: 12),
-                    Row(children: ['all', 'pending', 'partial_paid', 'paid', 'overdue'].map((s) => GestureDetector(
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(children: ['all', 'pending', 'partial_paid', 'paid', 'overdue'].map((s) => GestureDetector(
                       onTap: () => setState(() => _statusFilter = s),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 150),
@@ -74,6 +103,7 @@ class _CreditScreenState extends ConsumerState<CreditScreen> {
                             style: GoogleFonts.outfit(fontSize: 11, color: _statusFilter == s ? AppColors.primary : AppColors.textSecondary)),
                       ),
                     )).toList()),
+                    ),
                   ],
                 ),
               );
@@ -87,11 +117,11 @@ class _CreditScreenState extends ConsumerState<CreditScreen> {
               data: (credits) {
                 final filtered = _statusFilter == 'all' ? credits : credits.where((c) => _statusFilter == 'overdue' ? c.isOverdue : c.status == _statusFilter).toList();
                 if (filtered.isEmpty) return Center(child: Text('No credit records', style: GoogleFonts.outfit(color: AppColors.textSecondary)));
-                return ListView.builder(
+                return ResponsiveContent(child: ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: filtered.length,
                   itemBuilder: (ctx, i) => _CreditCard(credit: filtered[i], fmt: fmt, ref: ref).animate().fadeIn(delay: Duration(milliseconds: i * 25)),
-                );
+                ));
               },
             ),
           ),
@@ -109,8 +139,12 @@ class _SC extends StatelessWidget {
     padding: const EdgeInsets.all(10),
     decoration: BoxDecoration(color: c.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10), border: Border.all(color: c.withValues(alpha: 0.2))),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(l, style: GoogleFonts.outfit(fontSize: 11, color: c)),
-      Text(v, style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+      Text(l, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.outfit(fontSize: 11, color: c)),
+      FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(v, maxLines: 1, style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+      ),
     ]),
   ));
 }

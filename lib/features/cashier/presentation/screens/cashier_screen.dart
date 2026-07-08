@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -141,19 +140,22 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
       'label': 'eSewa',
       'value': 'esewa',
       'icon': Icons.phone_android_rounded,
-      'color': Color(0xFF6DBE45)
+      'color': Color(0xFF60BB46),
+      'asset': 'assets/icons/esewa.png'
     },
     {
       'label': 'Khalti',
       'value': 'khalti',
       'icon': Icons.account_balance_wallet_rounded,
-      'color': Color(0xFF5C2D91)
+      'color': Color(0xFF5C2D91),
+      'asset': 'assets/icons/khalti.png'
     },
     {
       'label': 'FonePay',
       'value': 'fonepay',
       'icon': Icons.qr_code_scanner_rounded,
-      'color': Color(0xFFE67E22)
+      'color': Color(0xFFE67E22),
+      'asset': 'assets/icons/fonepay.png'
     },
     {
       'label': 'Credit',
@@ -253,6 +255,7 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
       shadowColor: Colors.transparent,
       surfaceTintColor: Colors.transparent,
       toolbarHeight: 72,
+      automaticallyImplyLeading: false,
       leading: showDrawerIcon
           ? Builder(
               builder: (ctx) => IconButton(
@@ -262,70 +265,30 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
                 tooltip: 'Select Table',
               ),
             )
-          : IconButton(
-              icon: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: _CashierUi.subtleFill,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.arrow_back_rounded,
-                    color: AppColors.textPrimary, size: 18),
-              ),
-              onPressed: () => context.go('/tables'),
-            ),
+          : null,
       title: Row(
         children: [
           Container(
-            width: 42,
-            height: 42,
+            padding: const EdgeInsets.all(7),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: [AppColors.gradientStart, AppColors.gradientEnd],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(13),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primary.withValues(alpha: 0.32),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+              borderRadius: BorderRadius.circular(10),
             ),
-            alignment: Alignment.center,
-            child: const Icon(Icons.point_of_sale_rounded,
-                color: Colors.white, size: 20),
+            child: const Icon(Icons.point_of_sale,
+                color: Colors.white, size: 18),
           ),
-          const SizedBox(width: 13),
+          const SizedBox(width: 10),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                children: [
-                  Text(
-                    'Cashier Station',
-                    style: GoogleFonts.outfit(
-                      fontSize: 17.5,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: const BoxDecoration(
-                      color: AppColors.success,
-                      shape: BoxShape.circle,
-                    ),
-                  )
-                      .animate(onPlay: (c) => c.repeat(reverse: true))
-                      .fade(duration: 900.ms, begin: 0.3),
-                ],
-              ),
+              Text('Cashier Station',
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: AppColors.textPrimary)),
               Text(
                 DateFormat('EEEE, dd MMM yyyy · HH:mm').format(DateTime.now()),
                 style: GoogleFonts.outfit(
@@ -371,20 +334,8 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
         ),
       ],
       bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(2),
-        child: Container(
-          height: 2,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                AppColors.gradientStart,
-                AppColors.gradientEnd,
-                AppColors.border
-              ],
-              stops: [0.0, 0.08, 0.08],
-            ),
-          ),
-        ),
+        preferredSize: const Size.fromHeight(1),
+        child: Container(height: 1, color: AppColors.border),
       ),
     );
   }
@@ -2056,13 +2007,26 @@ class _CashierScreenState extends ConsumerState<CashierScreen>
                                     : Border.all(color: AppColors.border),
                               ),
                               alignment: Alignment.center,
-                              child: Icon(
-                                pm['icon'] as IconData,
-                                size: 15,
-                                color: isSelected
-                                    ? Colors.white
-                                    : AppColors.textSecondary,
-                              ),
+                              child: pm['asset'] != null
+                                  ? Image.asset(
+                                      pm['asset'] as String,
+                                      width: 18,
+                                      height: 18,
+                                      errorBuilder: (_, __, ___) => Icon(
+                                        pm['icon'] as IconData,
+                                        size: 15,
+                                        color: isSelected
+                                            ? Colors.white
+                                            : AppColors.textSecondary,
+                                      ),
+                                    )
+                                  : Icon(
+                                      pm['icon'] as IconData,
+                                      size: 15,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : AppColors.textSecondary,
+                                    ),
                             ),
                             const SizedBox(height: 7),
                             Text(

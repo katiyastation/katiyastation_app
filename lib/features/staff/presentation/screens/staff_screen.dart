@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/widgets/confirm_dialog.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/utils/responsive_utils.dart';
@@ -50,7 +51,31 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Staff Management'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.gradientStart, AppColors.gradientEnd],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.badge,
+                  color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text('Staff Management',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: AppColors.textPrimary)),
+            ),
+          ],
+        ),
         actions: [
           TextButton.icon(
             icon: _addingStaff
@@ -115,7 +140,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
                         child: const Text('Add First Staff'),
                       ),
                     ]))
-                  : ListView.builder(
+                  : ResponsiveContent(child: ListView.builder(
                       padding: const EdgeInsets.all(16),
                       itemCount: _staff.length,
                       itemBuilder: (ctx, i) => _StaffCard(
@@ -126,7 +151,7 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
                         onEdit: () => _showEditDialog(context, _staff[i]),
                         onDelete: () => _deleteStaff(context, _staff[i]),
                       ).animate().fadeIn(delay: Duration(milliseconds: i * 30)),
-                    ),
+                    )),
           // Salary tab
           _SalaryView(staff: _staff, ref: ref),
         ],
@@ -221,26 +246,16 @@ class _StaffScreenState extends ConsumerState<StaffScreen> with SingleTickerProv
     final staffId = staff['id'] as String;
     final staffName = staff['name'] as String;
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Staff Member'),
-        content: Text(
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Delete Staff Member',
+      message:
           'Remove "$staffName" from the active staff list? Their attendance and salary '
           'history will be preserved for reporting, and this can be undone by re-adding them.',
-          style: GoogleFonts.outfit(color: AppColors.textSecondary, fontSize: 13, height: 1.4),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error, foregroundColor: Colors.white),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      confirmLabel: 'Delete',
+      icon: Icons.delete_outline_rounded,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     if (!context.mounted) return;
     final messenger = ScaffoldMessenger.of(context);
 
@@ -703,7 +718,7 @@ class _SalaryView extends StatelessWidget {
         const Divider(height: 1),
         Expanded(child: staff.isEmpty
           ? Center(child: Text('No staff added', style: GoogleFonts.outfit(color: AppColors.textSecondary)))
-          : ListView.builder(
+          : ResponsiveContent(child: ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: staff.length,
               itemBuilder: (ctx, i) {
@@ -719,7 +734,7 @@ class _SalaryView extends StatelessWidget {
                   ]),
                 );
               },
-            )),
+            ))),
       ],
     );
   }

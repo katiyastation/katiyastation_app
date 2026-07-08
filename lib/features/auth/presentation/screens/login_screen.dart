@@ -467,7 +467,7 @@ class _FullBrandContent extends StatelessWidget {
                 size: 13, color: Colors.white.withValues(alpha: 0.5)),
             const SizedBox(width: 8),
             Text(
-              'Encrypted & secure access',
+              'Powered by Himnex Solutions Pvt. Ltd.',
               style: GoogleFonts.outfit(
                 fontSize: 11.5,
                 color: Colors.white.withValues(alpha: 0.5),

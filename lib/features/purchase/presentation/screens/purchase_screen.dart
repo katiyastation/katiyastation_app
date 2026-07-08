@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -54,7 +55,31 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Purchase Management'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.gradientStart, AppColors.gradientEnd],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.shopping_cart,
+                  color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text('Purchase Management',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: AppColors.textPrimary)),
+            ),
+          ],
+        ),
         actions: [
           TextButton.icon(icon: const Icon(Icons.add_rounded, size: 18), label: const Text('New Purchase'), onPressed: () => _showAddDialog(context)),
         ],
@@ -81,7 +106,7 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
                   const SizedBox(height: 12),
                   ElevatedButton(onPressed: () => _showAddDialog(context), child: const Text('Record Purchase')),
                 ]))
-              : ListView.builder(
+              : ResponsiveContent(child: ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: purchases.length,
                   itemBuilder: (ctx, i) {
@@ -117,7 +142,7 @@ class _PurchaseScreenState extends ConsumerState<PurchaseScreen> {
                       ]),
                     ).animate().fadeIn(delay: Duration(milliseconds: i * 25));
                   },
-                ),
+                )),
           )),
         ],
       ),

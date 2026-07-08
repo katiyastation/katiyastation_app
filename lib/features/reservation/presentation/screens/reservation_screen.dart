@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/utils/responsive_utils.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../auth/presentation/providers/auth_provider.dart';
@@ -34,7 +35,31 @@ class _ReservationScreenState extends ConsumerState<ReservationScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Reservations'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.gradientStart, AppColors.gradientEnd],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.event_available,
+                  color: Colors.white, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Flexible(
+              child: Text('Reservations',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                      color: AppColors.textPrimary)),
+            ),
+          ],
+        ),
         actions: [
           TextButton.icon(icon: const Icon(Icons.add_rounded, size: 18), label: const Text('New Reservation'), onPressed: () => _showAddDialog(context)),
         ],
@@ -80,7 +105,7 @@ class _ReservationScreenState extends ConsumerState<ReservationScreen> {
                   ElevatedButton(onPressed: () => _showAddDialog(context), child: const Text('Add Reservation')),
                 ]));
                 }
-                return ListView.builder(
+                return ResponsiveContent(child: ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: filtered.length,
                   itemBuilder: (ctx, i) {
@@ -121,7 +146,7 @@ class _ReservationScreenState extends ConsumerState<ReservationScreen> {
                       ]),
                     ).animate().fadeIn(delay: Duration(milliseconds: i * 25));
                   },
-                );
+                ));
               },
             ),
           ),
